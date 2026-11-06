@@ -1,0 +1,10 @@
+Easiest: drop SBXF_PCDRV_L11_2_30_0012.exe into THIS folder and run ./build.sh  (see INSTALL.md, step 1)
+
+Or put these two files from Creative's Windows X-Fi driver into THIS folder (creative/):
+
+  ha20x2k.sys     1573888 bytes   sha256 bb0a78ffc0b34bb40c848e82fb71cf5849537d1ab1fad6a49621465976000be9
+  CTEXFIFX.sys    1429000 bytes   sha256 4fa5e49e03d45ff70970f26f0f6cffd8ff4e30e04cb973d68bab78460f8cdafe
+
+On a Windows PC with that Creative X-Fi driver installed they are in C:\Windows\System32\drivers\ .
+Only these exact versions work (build.sh checks the sha256). They contain Creative's DSP code: the firmware built
+from them (firmware/*.bin) is for your own use only - don't share it.

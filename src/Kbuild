@@ -1,0 +1,4 @@
+obj-m := snd-ctxfi.o
+snd-ctxfi-y := xfi.o ctatc.o ctvmem.o ctpcm.o ctmixer.o ctresource.o \
+        ctsrc.o ctamixer.o ctdaio.o ctimap.o cttimer.o \
+        cthw20k2.o cthw20k1.o cthardware.o ct_dsp_fx.o ct_winplay.o ct_winmode.o ct_winrec.o

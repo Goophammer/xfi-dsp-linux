@@ -1,0 +1,15 @@
+# xfi-dsp.service - start the X-Fi DSP after boot, with a crash guard (see /usr/local/sbin/xfi-dsp-autostart).
+# Installed by src/xfi_dsp_install.sh; disable with: sudo systemctl disable xfi-dsp.service
+# Type=simple: runs in the background, so the boot does not wait for the ~12 s DSP load.
+[Unit]
+Description=Creative X-Fi DSP (Windows mode) autostart
+After=systemd-udev-settle.service sound.target
+Wants=sound.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/xfi-dsp-autostart
+
+
+[Install]
+WantedBy=multi-user.target

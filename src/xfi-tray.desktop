@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=X-Fi DSP
+Comment=Controls for the X-Fi's DSP effects
+Exec=/usr/local/bin/xfi-tray
+Icon=audio-card
+Terminal=false
+Categories=AudioVideo;Audio;Mixer;
+X-GNOME-Autostart-enabled=true

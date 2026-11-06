@@ -1,0 +1,15 @@
+# Creative's files and everything built from them must never be published
+creative/*.sys
+creative/*.SYS
+creative/*.exe
+creative/*.EXE
+firmware/*.bin
+# build output
+*.o
+*.ko
+*.mod
+*.mod.c
+*.cmd
+*.order
+*.symvers
+__pycache__/
