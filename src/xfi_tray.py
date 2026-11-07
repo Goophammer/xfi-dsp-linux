@@ -81,6 +81,19 @@ def xfi_sink():
     return None
 
 
+WM_STATE = '/sys/kernel/xfi_dsp/winmode'	# the driver's own word: idle, loading, running, failed
+STATE_TEXT = {'loading': 'The X-Fi DSP is starting...',
+              'failed': 'The X-Fi DSP failed to start (journalctl -b -u xfi-dsp.service)'}
+
+
+def dsp_state():
+    try:
+        with open(WM_STATE) as f:
+            return (f.read().split() or ['idle'])[0].rstrip(':')
+    except OSError:
+        return 'not loaded'		# our driver isn't loaded, e.g. another kernel
+
+
 def read_controls():
     r = run('amixer', '-c', CARD, 'contents')
     if r is None or r.returncode:
@@ -174,6 +187,7 @@ class Panel(QWidget):
         self.setWindowIcon(make_icon(True))
         self.saved = load_settings()
         self.ctls = {}
+        self.state = "idle"
         self.widgets = {}
         self.layout_key = None
         self.restored = False
@@ -190,12 +204,15 @@ class Panel(QWidget):
         self.refresh()
 
     def active(self):
-        return bool(self.ctls)
+        return self.state == 'running' and bool(self.ctls)
 
     def refresh(self):
         if self.pending:
             return
-        self.ctls = read_controls()
+        # DSP Master exists as soon as the driver loads: only the driver's state says the DSP is up. Restoring before
+        # that would find the effects missing and never try again
+        self.state = dsp_state()
+        self.ctls = read_controls() if self.state == 'running' else {}
         if self.ctls and not self.restored:
             restore(self.ctls, self.saved)
             self.restored = True
@@ -207,6 +224,7 @@ class Panel(QWidget):
             self.layout_key = key
             self.build()
         self.show_values()
+        self.status.setText(STATE_TEXT.get(self.state, 'The X-Fi DSP is not running'))
         self.status.setVisible(not self.ctls)
 
     def build(self):
@@ -356,10 +374,11 @@ class Tray:
 
     def update_icon(self):
         a = self.panel.active()
-        if a != self.last:
-            self.last = a
+        if (a, self.panel.state) != self.last:
+            self.last = (a, self.panel.state)
             self.tray.setIcon(make_icon(a))
-            self.tray.setToolTip('X-Fi DSP' if a else 'X-Fi DSP: not running')
+            self.tray.setToolTip('X-Fi DSP' if a else 'X-Fi DSP: starting' if self.panel.state == 'loading'
+                                 else 'X-Fi DSP: not running')
 
     def clicked(self, reason):
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
