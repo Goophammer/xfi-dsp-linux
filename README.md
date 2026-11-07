@@ -23,10 +23,11 @@ Your games and movies send up to 7.1 audio, the card turns it into surround for 
 | EAX on music or games | ➖ No effect, only audible through Mic Monitor |
 | **Output** | |
 | Stereo output on the green jack | ✅ |
-| Front panel header (your PC case's headphone and mic jacks) | ❓ Untested |
+| Front panel header (your PC case's headphone and mic jacks) | ✅ |
+| Muting speakers when front panel headphones are plugged in (optional, off by default) | ✅ |
 | Taskbar volume, controlling the DSP | ✅ |
 | Surround speakers on the other output jacks | ❌ Not available yet |
-| Subwoofer output | ❌ The jack stays silent |
+| Subwoofer output | ❌ Not available yet |
 | **Recording** | |
 | Microphone recording and Mic Monitor | ✅ |
 | EAX reverb on your voice through Mic Monitor (mic recordings stay dry) | ✅ |
@@ -37,7 +38,7 @@ Your games and movies send up to 7.1 audio, the card turns it into surround for 
 | Automatic rebuild after kernel updates (DKMS) | ✅ |
 | Tray app with all controls, restoring your settings after a reboot | ✅ |
 
-This table is for the default mode, `hp71` (headphone mode with 7.1 downmix). Two older stereo modes, `game` and `ent`, are also included. They have fewer features and aren't my priority right now.
+This table is for the default mode, `hp71` (Game Mode with headphones and 7.1 downmix). Two older stereo modes, `game` (Game Mode with speakers) and `ent` (Entertainment Mode with speakers), are also included. They have fewer features and aren't my priority right now.
 
 ## Compatibility
 
@@ -97,7 +98,7 @@ The recipes in this project hold those hardware register values, and refer to th
 - **Check your game's audio setting.** CMSS-3D needs surround from the game, so use Surround, Speakers or Auto, not Stereo or Mono.
 - **Using several effects at once can cause clipping.** If it does, lower the volume.
 - **Bass Boost can clip** on music that already has a lot of bass. Lower the level or the volume.
-- **With What U Hear in voice chat,** other people hear everything you hear.
+- With **What U Hear in voice chat,** other people hear everything you hear.
 - **What U Hear doesn't record Bass Boost,** because Bass Boost is added after that point.
 
 ## Help wanted

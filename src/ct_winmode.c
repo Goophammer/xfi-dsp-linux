@@ -31,6 +31,7 @@
 #include <linux/sysfs.h>
 #include <linux/slab.h>
 #include <linux/unaligned.h>
+#include <linux/workqueue.h>
 #include <sound/control.h>
 #include <sound/core.h>
 #include "ctatc.h"
@@ -159,6 +160,19 @@ static void wr(u32 reg, u32 val)
 
 static int wm_parse_controls(const u8 *d, size_t size, size_t off, u32 count);
 static void wm_register_controls(void);
+
+/* "DSP Auto Mute Speakers": Windows polls the jacks about 3 times a second too. Off by default, as in Windows. */
+#define WM_JACK_MS	300
+static bool wm_auto_mute, wm_auto_mute_added;
+
+static void wm_jack_fn(struct work_struct *work)
+{
+	if (READ_ONCE(wm.state) != WM_RUNNING || !READ_ONCE(wm_auto_mute))
+		return;
+	ct20k1_auto_mute(wm.atc->hw, true);
+	schedule_delayed_work(to_delayed_work(work), msecs_to_jiffies(WM_JACK_MS));
+}
+static DECLARE_DELAYED_WORK(wm_jack_work, wm_jack_fn);
 
 /*
  * The original driver's mixer controls (Master, PCM, Front, Line, Mic, IEC958, ...) do nothing while Windows mode
@@ -569,6 +583,8 @@ static int wm_thread(void *unused)
 	mutex_unlock(&wm.lock);
 	wm_register_controls();
 	wm_legacy_controls(false);
+	if (READ_ONCE(wm_auto_mute))
+		schedule_delayed_work(&wm_jack_work, 0);
 	dev_info(dev, "X-Fi Windows mode: running after %lld ms - play to ALSA device 6 (\"XFi Windows path\")\n",
 		 ktime_ms_delta(ktime_get(), t0));
 out_fw:
@@ -668,6 +684,7 @@ void ct_winmode_suspend(void)
 		kthread_stop(t);
 		put_task_struct(t);
 	}
+	cancel_delayed_work_sync(&wm_jack_work);
 	if (wm.state == WM_RUNNING || wm.state == WM_LOADING) {
 		if (!READ_ONCE(wm_gone))
 			wm_halt_dsp();
@@ -703,6 +720,9 @@ void ct_winmode_free(struct kobject *kobj)
 		kthread_stop(t);
 		put_task_struct(t);
 	}
+	cancel_delayed_work_sync(&wm_jack_work);
+	if (wm.atc && wm.state == WM_RUNNING)
+		ct20k1_auto_mute(wm.atc->hw, false);
 	/* never leave Windows' DSP program running behind us: rearm's PCI reset does not stop the cores (2026-10-29) */
 	if (wm.atc && wm.state != WM_IDLE) {
 		wm_halt_dsp();
@@ -841,8 +861,43 @@ static int wm_parse_controls(const u8 *d, size_t size, size_t off, u32 count)
 	return 0;
 }
 
+static int wm_auto_mute_get(struct snd_kcontrol *kc, struct snd_ctl_elem_value *uv)
+{
+	uv->value.integer.value[0] = READ_ONCE(wm_auto_mute);
+	return 0;
+}
+
+static int wm_auto_mute_put(struct snd_kcontrol *kc, struct snd_ctl_elem_value *uv)
+{
+	bool on = uv->value.integer.value[0];
+
+	if (on == READ_ONCE(wm_auto_mute))
+		return 0;
+	WRITE_ONCE(wm_auto_mute, on);
+	if (READ_ONCE(wm.state) != WM_RUNNING)
+		return 1;
+	if (on) {
+		schedule_delayed_work(&wm_jack_work, 0);
+	} else {
+		cancel_delayed_work_sync(&wm_jack_work);
+		ct20k1_auto_mute(wm.atc->hw, false);
+	}
+	return 1;
+}
+
+static const struct snd_kcontrol_new wm_auto_mute_ctl = {
+	.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
+	.name = "DSP Auto Mute Speakers Playback Switch",
+	.info = snd_ctl_boolean_mono_info,
+	.get = wm_auto_mute_get,
+	.put = wm_auto_mute_put,
+};
+
 static void wm_register_controls(void)
 {
+	if (!wm_auto_mute_added && wm.atc->hw->model == CTSB073X &&
+	    !snd_ctl_add(wm.atc->card, snd_ctl_new1(&wm_auto_mute_ctl, wm.atc)))
+		wm_auto_mute_added = true;
 	for (unsigned int i = 0; i < wm_n_ctls; i++) {
 		struct wm_ctl *c = &wm_ctls[i];
 		struct snd_kcontrol_new kn = {

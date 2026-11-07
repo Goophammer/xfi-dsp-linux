@@ -2171,6 +2171,27 @@ void ct20k1_mic_select(struct hw *hw)
 	ct20k1_codec_write(hw, 0x001a0080, 0x1c, 0xcf);
 }
 
+/*
+ * Windows' "automatically mute speakers": bit 11 of GPIO clears with headphones in the front panel header, and clearing
+ * bit 6 silences the rear jacks while the front panel keeps playing. Measured on SB073x only. Without enabled: unmuted.
+ */
+#define GPIO_FRONT_HP_OUT	0x0800
+#define GPIO_REAR_ON		0x0040
+
+void ct20k1_auto_mute(struct hw *hw, bool enabled)
+{
+	u32 v, want;
+
+	if (hw->model != CTSB073X)
+		return;
+	v = hw_read_20kx(hw, GPIO);
+	if (v == 0xffffffff)	/* card gone */
+		return;
+	want = enabled && !(v & GPIO_FRONT_HP_OUT) ? v & ~GPIO_REAR_ON : v | GPIO_REAR_ON;
+	if (want != v)
+		hw_write_20kx_raw(hw, GPIO, want);
+}
+
 u32 ct20k1_reg_read(struct hw *hw, u32 reg)
 {
 	return hw_read_20kx(hw, reg);

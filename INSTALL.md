@@ -208,6 +208,7 @@ another kernel. The distro's analog surround and digital profiles are hidden, be
 | DSP Bass Boost / DSP Bass Boost Level | hp71: more bass in the headphones. The level runs from 3 dB (0) to 12 dB (18) in 0.5 dB steps, 6 = Windows' default, and can clip at the top. The cutoff stays at 100 Hz. What U Hear recordings don't include it |
 | DSP Recording Source | hp71: `Mic`, or `What U Hear` = everything you hear (music, games, the mic with its effects). The mic alone stays dry. Also selectable as the input's port in your desktop's sound settings |
 | DSP Mic Monitor | hear the microphone through the speakers |
+| DSP Auto Mute Speakers | SB073x: silences the rear jacks while headphones are in the front panel header. Off by default |
 | DSP Mic Capture Volume (Capture page, F4) | microphone recording level (top = Windows' 100) |
 
 A graphical ALSA mixer such as QasMixer shows the same controls as switches and sliders.

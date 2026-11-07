@@ -27,6 +27,7 @@ PORTS = {'Mic': 'xfi-dsp-mic', 'What U Hear': 'xfi-dsp-wuh'}
 # (section, control, label, slider that belongs to it). CMSS-3D first: switching it resets EAX and Mic Environment.
 LAYOUT = [
     ('Output', MASTER_CTL, 'Master', None),
+    ('Output', 'DSP Auto Mute Speakers Playback Switch', 'Mute speakers when headphones are in', None),
     ('Effects', 'DSP CMSS-3D Playback Switch', 'CMSS-3D', 'DSP CMSS-3D Level Playback Volume'),
     ('Effects', 'DSP SVM Playback Switch', 'SVM', None),
     ('Effects', 'DSP Bass Boost Playback Switch', 'Bass Boost', 'DSP Bass Boost Level Playback Volume'),
