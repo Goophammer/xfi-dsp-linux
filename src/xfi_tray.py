@@ -14,7 +14,7 @@ import sys
 
 from PyQt6.QtCore import QRectF, Qt, QTimer
 from PyQt6.QtGui import QAction, QColor, QIcon, QLinearGradient, QPainter, QPixmap
-from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QMenu, QRadioButton, QSlider,
+from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFrame, QGraphicsOpacityEffect, QGridLayout, QHBoxLayout, QLabel, QMenu, QRadioButton, QSlider,
                              QSystemTrayIcon, QVBoxLayout, QWidget)
 
 CARD = 'XFi'
@@ -27,7 +27,7 @@ PORTS = {'Mic': 'xfi-dsp-mic', 'What U Hear': 'xfi-dsp-wuh'}
 # (section, control, label, slider that belongs to it). CMSS-3D first: switching it resets EAX and Mic Environment.
 LAYOUT = [
     ('Output', MASTER_CTL, 'Master', None),
-    ('Output', 'DSP Auto Mute Speakers Playback Switch', 'Mute speakers when headphones are in', None),
+    ('Output', 'DSP Auto Mute Speakers Playback Switch', 'Mute speakers when headphones are plugged in', None),
     ('Effects', 'DSP CMSS-3D Playback Switch', 'CMSS-3D', 'DSP CMSS-3D Level Playback Volume'),
     ('Effects', 'DSP SVM Playback Switch', 'SVM', None),
     ('Effects', 'DSP Bass Boost Playback Switch', 'Bass Boost', 'DSP Bass Boost Level Playback Volume'),
@@ -92,6 +92,20 @@ def dsp_state():
             return (f.read().split() or ['idle'])[0].rstrip(':')
     except OSError:
         return 'not loaded'		# our driver isn't loaded, e.g. another kernel
+
+
+BASS_LEVEL = 'DSP Bass Boost Level Playback Volume'
+MONITOR_CTL = 'DSP Mic Monitor Playback Switch'
+# the reverb on the voice sits after Mic Monitor: these do nothing unless it's on, so they only show then
+MONITOR_ONLY = ('DSP EAX Playback Volume', 'DSP Mic Environment Playback Volume')
+
+
+def value_text(name, v, c):
+    """what a slider's position means: Bass Boost in dB (3 dB + 0.5 dB per step), the rest in % of its range"""
+    if name == BASS_LEVEL:
+        return f'{3 + v / 2:g} dB'
+    span = c['max'] - c['min']
+    return f'{round(100 * (v - c["min"]) / span) if span else 0}%'
 
 
 def read_controls():
@@ -232,6 +246,9 @@ class Panel(QWidget):
             self.outer.removeWidget(self.body)
             self.body.deleteLater()
         self.widgets = {}
+        self.values = {}		# slider name -> its value label
+        self.rows = {}			# slider name -> the widget to dim while its effect is off
+        self.labels = {}		# slider name -> its name label, for rows that can be hidden
         self.body = QWidget()
         g = QGridLayout(self.body)
         g.setContentsMargins(0, 0, 0, 0)
@@ -261,7 +278,8 @@ class Panel(QWidget):
                 row = self.level(g, row, level, 'EQ Level')
                 continue
             else:
-                g.addWidget(QLabel(label), row, 0)
+                self.labels[name] = QLabel(label)
+                g.addWidget(self.labels[name], row, 0)
                 g.addWidget(self.slider(name, c), row, 1)
                 row += 1
                 continue
@@ -272,7 +290,7 @@ class Panel(QWidget):
             row += 1
         c = self.ctls.get(SOURCE_CTL)
         if c:
-            row = self.heading(g, row, 'Recording')
+            row = self.heading(g, row, 'Record from')
             box = QHBoxLayout()
             self.widgets[SOURCE_CTL] = []
             for item in c['items']:
@@ -302,11 +320,22 @@ class Panel(QWidget):
         return row
 
     def slider(self, name, c):
+        """a slider with its value next to it"""
+        box = QWidget()
+        h = QHBoxLayout(box)
+        h.setContentsMargins(0, 0, 0, 0)
         s = QSlider(Qt.Orientation.Horizontal)
         s.setRange(c['min'], c['max'])
-        s.valueChanged.connect(lambda v, n=name: self.change(n, v))
+        lab = QLabel()
+        lab.setMinimumWidth(lab.fontMetrics().horizontalAdvance('12.5 dB') + 4)
+        lab.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        s.valueChanged.connect(lambda v, n=name, cc=c, l=lab: (l.setText(value_text(n, v, cc)), self.change(n, v)))
+        h.addWidget(s, 1)
+        h.addWidget(lab)
         self.widgets[name] = s
-        return s
+        self.values[name] = lab
+        self.rows[name] = box
+        return box
 
     def show_values(self):
         for name, w in self.widgets.items():
@@ -325,6 +354,29 @@ class Panel(QWidget):
             elif not w.isSliderDown():
                 w.setValue(c['value'])
             w.blockSignals(False)
+            if name in self.values:
+                self.values[name].setText(value_text(name, w.value(), c))
+        mon = self.ctls.get(MONITOR_CTL)
+        show = bool(mon and mon['value'])
+        changed = False
+        for name in MONITOR_ONLY:
+            for w in (self.labels.get(name), self.rows.get(name)):
+                if w is not None and w.isVisibleTo(self) != show:
+                    w.setVisible(show)
+                    changed = True
+        if changed:
+            QTimer.singleShot(0, self.adjustSize)
+        # a level whose effect is off still works (it applies when the effect comes on), but shows dimmed
+        for _, sw, _, level in LAYOUT:
+            row, c = self.rows.get(level), self.ctls.get(sw)
+            if row is None or c is None or c['value'] is None:
+                continue
+            on = c['items'][c['value']] != 'Off' if c['type'] == 'ENUMERATED' else bool(c['value'])
+            fx = row.graphicsEffect()
+            if fx is None:
+                fx = QGraphicsOpacityEffect(row)
+                row.setGraphicsEffect(fx)
+            fx.setOpacity(1.0 if on else 0.4)
         src, lvl = self.ctls.get(SOURCE_CTL), self.widgets.get(LEVEL_CTL)
         if src and lvl:		# What U Hear has its own level: the taskbar slider, in software
             mic = src['items'][src['value']] == 'Mic'
