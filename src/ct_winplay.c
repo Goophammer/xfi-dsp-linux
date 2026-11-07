@@ -90,6 +90,13 @@ struct winplay {
 	unsigned int vol;		/* index into winplay_gain_q16 */
 };
 
+/*
+ * Windows folds LFE into front left and right before the DSP, with CMSS-3D on or off: measured on What U Hear, +5.5 dB
+ * against a front channel, flat with CMSS off and with the fronts' CMSS curve with it on. Left on its own channel it skips
+ * CMSS and reaches the ears 8.5 dB lower. 1.884 in 16.16.
+ */
+#define WINPLAY_LFE_GAIN	123444
+
 static u32 rd(struct winplay *p, u32 reg)
 {
 	return ct20k1_reg_read(p->atc->hw, reg);
@@ -106,6 +113,8 @@ static int conv_pos(struct winplay *p)
 	}
 	ca &= ADDR_MASK;
 
+	if (ca < 0x1000 || ca == p->la)	/* at the wrap, for some 40 us: a bare offset, or just past the end. Both are the start */
+		return 0;
 	if (ca < p->sa || ca >= p->la)
 		return -1;
 	return (ca - p->sa) / (4 * p->ch);
@@ -200,6 +209,13 @@ advance:
 
 			for (u32 k = 0; k < p->ch; k++)
 				d[k] = g == 65536 ? f[k] : (u32)(s32)(((s64)(s32)f[k] * g) >> 16);
+			if (p->ch == 8) {	/* FL FR FC LFE ...: see WINPLAY_LFE_GAIN */
+				s64 lfe = ((s64)(s32)d[3] * WINPLAY_LFE_GAIN) >> 16;
+
+				d[0] = (u32)(s32)clamp_t(s64, (s64)(s32)d[0] + lfe, S32_MIN, S32_MAX);
+				d[1] = (u32)(s32)clamp_t(s64, (s64)(s32)d[1] + lfe, S32_MIN, S32_MAX);
+				d[3] = 0;
+			}
 		}
 		if (p->loop && ++p->w >= p->nloop)
 			p->w = 0;

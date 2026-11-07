@@ -112,11 +112,6 @@ If you have an X-Fi, especially a different model, please open an issue saying w
 - what worked and what didn't: sound, effects, microphone, What U Hear, sleep and resume
 - `sudo dmesg | grep -iE "ctxfi|windows mode|windows path|xfi"`
 
-Also useful:
-
-- test results from the front panel header
-- help with surround speakers, line-in or S/PDIF
-
 ## Legal
 
 Not affiliated with or endorsed by Creative Technology Ltd. Sound Blaster, X-Fi, CMSS-3D, Crystalizer and EAX are trademarks of their owners. The driver is based on the Linux kernel's `snd-ctxfi` driver and is licensed under GPL-2.0, see [LICENSE](LICENSE). The install guide explains what the package does and doesn't contain. Use at your own risk.

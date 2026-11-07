@@ -83,6 +83,8 @@ static int cap_pos(struct winrec *r)
 		return -2;
 	}
 	ca &= ADDR_MASK;
+	if (ca < 0x1000 || ca == r->va + r->bytes)	/* at the wrap: a bare offset, or just past the end. Both are the start */
+		ca = r->va;
 	if (ca < r->va || ca >= r->va + r->bytes)
 		return -1;
 	return ((ca - r->va) / (4 * r->nch) + r->nloop - min(winrec_behind, r->nloop / 4)) % r->nloop;

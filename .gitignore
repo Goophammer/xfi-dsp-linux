@@ -13,3 +13,6 @@ firmware/*.bin
 *.order
 *.symvers
 __pycache__/
+# editor leftovers
+*.kate-swp
+*~
