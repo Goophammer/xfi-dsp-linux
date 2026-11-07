@@ -24,5 +24,6 @@ void ct20k1_set_freeze(bool on);
 int ct20k1_codec_write(struct hw *hw, u32 device, u32 reg, u32 data);
 void ct20k1_mic_select(struct hw *hw);
 void ct20k1_auto_mute(struct hw *hw, bool enabled);
+void ct20k1_rear_mute(struct hw *hw, bool mute);
 
 #endif /* CTHW20K1_H */

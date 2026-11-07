@@ -2178,7 +2178,7 @@ void ct20k1_mic_select(struct hw *hw)
 #define GPIO_FRONT_HP_OUT	0x0800
 #define GPIO_REAR_ON		0x0040
 
-void ct20k1_auto_mute(struct hw *hw, bool enabled)
+void ct20k1_rear_mute(struct hw *hw, bool mute)
 {
 	u32 v, want;
 
@@ -2187,9 +2187,21 @@ void ct20k1_auto_mute(struct hw *hw, bool enabled)
 	v = hw_read_20kx(hw, GPIO);
 	if (v == 0xffffffff)	/* card gone */
 		return;
-	want = enabled && !(v & GPIO_FRONT_HP_OUT) ? v & ~GPIO_REAR_ON : v | GPIO_REAR_ON;
+	want = mute ? v & ~GPIO_REAR_ON : v | GPIO_REAR_ON;
 	if (want != v)
 		hw_write_20kx_raw(hw, GPIO, want);
+}
+
+void ct20k1_auto_mute(struct hw *hw, bool enabled)
+{
+	u32 v;
+
+	if (hw->model != CTSB073X)
+		return;
+	v = hw_read_20kx(hw, GPIO);
+	if (v == 0xffffffff)
+		return;
+	ct20k1_rear_mute(hw, enabled && !(v & GPIO_FRONT_HP_OUT));
 }
 
 u32 ct20k1_reg_read(struct hw *hw, u32 reg)

@@ -163,6 +163,7 @@ static void wm_register_controls(void);
 
 /* "DSP Auto Mute Speakers": Windows polls the jacks about 3 times a second too. Off by default, as in Windows. */
 #define WM_JACK_MS	300
+#define WM_UNMUTE_MS	500	/* after 'running', before the rear jacks come back */
 static bool wm_auto_mute, wm_auto_mute_added;
 
 static void wm_jack_fn(struct work_struct *work)
@@ -224,34 +225,69 @@ static struct wm_ctl *wm_find_ctl(const char *name)
 	return NULL;
 }
 
-/* The level's states are Windows' passes: step through them, a jump is audible. 'on' leaves the card at the start state. */
-static void wm_bass_step(struct wm_ctl *c)
+/*
+ * The level's states are Windows' passes: step through them, a jump is audible. 'on' leaves the card at the start state.
+ * While Windows mode runs, the steps go to a work item, one every WM_STEP_MS, so a control change returns at once and
+ * other controls don't wait. wm_bass_lock keeps a step and the switch's own writes apart: the switch resets 'at'.
+ */
+static DEFINE_MUTEX(wm_bass_lock);
+
+static bool wm_bass_step_once(struct wm_ctl *c)	/* under wm_bass_lock; true: more steps to go */
 {
 	struct wm_ctl *sw = wm_find_ctl(WM_BASS_SWITCH);
+	struct wm_state_ops *st;
 
-	if (!sw || !sw->want)
-		return;			/* off: the level waits for 'on' */
-	while (c->at != c->want) {
-		struct wm_state_ops *st;
+	if (!sw || !sw->want || c->at == c->want)
+		return false;		/* off: the level waits for 'on' */
+	c->at += c->at < c->want ? 1 : -1;
+	st = &c->st[c->at];
+	for (u32 k = 0; k < st->n; k++)
+		if ((st->ops[2 * k] >> 28) == OP_WRITE)
+			wr(st->ops[2 * k] & 0x0FFFFFFF, st->ops[2 * k + 1]);
+	return c->at != c->want;
+}
 
-		c->at += c->at < c->want ? 1 : -1;
-		st = &c->st[c->at];
-		for (u32 k = 0; k < st->n; k++)
-			if ((st->ops[2 * k] >> 28) == OP_WRITE)
-				wr(st->ops[2 * k] & 0x0FFFFFFF, st->ops[2 * k + 1]);
-		if (READ_ONCE(wm.state) == WM_RUNNING && c->at != c->want)
-			msleep(WM_STEP_MS);
+static void wm_bass_fn(struct work_struct *work)
+{
+	struct wm_ctl *c = wm_find_ctl(WM_BASS_LEVEL);
+	bool more = false;
+
+	if (!c)
+		return;
+	mutex_lock(&wm_bass_lock);
+	if (READ_ONCE(wm.state) == WM_RUNNING)
+		more = wm_bass_step_once(c);
+	mutex_unlock(&wm_bass_lock);
+	if (more)
+		schedule_delayed_work(to_delayed_work(work), msecs_to_jiffies(WM_STEP_MS));
+}
+static DECLARE_DELAYED_WORK(wm_bass_work, wm_bass_fn);
+
+/* running: start the steps in the background; before that (start, resume) all at once, nothing plays yet */
+static void wm_bass_step(struct wm_ctl *c)
+{
+	if (READ_ONCE(wm.state) == WM_RUNNING) {
+		schedule_delayed_work(&wm_bass_work, 0);	/* no-op if already queued: it reads 'want' each step */
+		return;
 	}
+	while (wm_bass_step_once(c))
+		;
 }
 
 static void wm_ctl_apply(struct wm_ctl *c)
 {
 	struct wm_state_ops *st = &c->st[c->want];
 
+	bool bass_switch = !strcmp(c->name, WM_BASS_SWITCH);
+
 	if (!strcmp(c->name, WM_BASS_LEVEL)) {
+		mutex_lock(&wm_bass_lock);
 		wm_bass_step(c);
+		mutex_unlock(&wm_bass_lock);
 		return;
 	}
+	if (bass_switch)
+		mutex_lock(&wm_bass_lock);
 	if (st->restore) {
 		/* reverse order: for an address written several times the earliest (= original) value lands last */
 		for (u32 k = c->n_snap; k-- > 0;)
@@ -281,13 +317,14 @@ static void wm_ctl_apply(struct wm_ctl *c)
 	for (u32 k = 0; k < st->n; k++)
 		if ((st->ops[2 * k] >> 28) == OP_WRITE)
 			wr(st->ops[2 * k] & 0x0FFFFFFF, st->ops[2 * k + 1]);
-	if (!strcmp(c->name, WM_BASS_SWITCH)) {
+	if (bass_switch) {
 		struct wm_ctl *l = wm_find_ctl(WM_BASS_LEVEL);
 
 		if (l) {
 			l->at = l->def;
 			wm_bass_step(l);
 		}
+		mutex_unlock(&wm_bass_lock);
 	}
 }
 
@@ -528,6 +565,8 @@ static int wm_thread(void *unused)
 		wm_fail(msg);
 		goto out;
 	}
+	/* the start crackles and blips on the outputs: keep the rear jacks silent until it has settled (SB073x only) */
+	ct20k1_rear_mute(wm.atc->hw, true);
 	p = (const __le32 *)fw->data;
 	if (fw->size < 32 || le32_to_cpu(p[0]) != FW_MAGIC || le32_to_cpu(p[1]) != 2 ||
 	    fw->size < 32 + 8ULL * le32_to_cpu(p[2])) {
@@ -583,12 +622,18 @@ static int wm_thread(void *unused)
 	mutex_unlock(&wm.lock);
 	wm_register_controls();
 	wm_legacy_controls(false);
-	if (READ_ONCE(wm_auto_mute))
-		schedule_delayed_work(&wm_jack_work, 0);
 	dev_info(dev, "X-Fi Windows mode: running after %lld ms - play to ALSA device 6 (\"XFi Windows path\")\n",
 		 ktime_ms_delta(ktime_get(), t0));
 out_fw:
 	release_firmware(fw);
+	if (READ_ONCE(wm.state) == WM_RUNNING) {
+		msleep(WM_UNMUTE_MS);
+		ct20k1_auto_mute(wm.atc->hw, READ_ONCE(wm_auto_mute));	/* unmutes, unless headphones are in the front panel */
+		if (READ_ONCE(wm_auto_mute))
+			schedule_delayed_work(&wm_jack_work, 0);	/* only now, or it would unmute early */
+	} else {
+		ct20k1_rear_mute(wm.atc->hw, false);	/* failed or stopped: the normal driver needs its speakers */
+	}
 out:
 	mutex_lock(&wm.lock);
 	wm.thread = NULL;
@@ -685,6 +730,7 @@ void ct_winmode_suspend(void)
 		put_task_struct(t);
 	}
 	cancel_delayed_work_sync(&wm_jack_work);
+	cancel_delayed_work_sync(&wm_bass_work);
 	if (wm.state == WM_RUNNING || wm.state == WM_LOADING) {
 		if (!READ_ONCE(wm_gone))
 			wm_halt_dsp();
@@ -721,6 +767,7 @@ void ct_winmode_free(struct kobject *kobj)
 		put_task_struct(t);
 	}
 	cancel_delayed_work_sync(&wm_jack_work);
+	cancel_delayed_work_sync(&wm_bass_work);
 	if (wm.atc && wm.state == WM_RUNNING)
 		ct20k1_auto_mute(wm.atc->hw, false);
 	/* never leave Windows' DSP program running behind us: rearm's PCI reset does not stop the cores (2026-10-29) */

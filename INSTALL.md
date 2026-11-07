@@ -176,6 +176,11 @@ cat /sys/kernel/xfi_dsp/winmode
 The autostart has a **crash guard**: if a DSP start never finished (the PC froze or was reset while it loaded), the
 next boot does **not** start it again - just reboot once. The log then says so (`journalctl -b -u xfi-dsp`).
 To try again later: `sudo rm /var/lib/xfi-dsp/starting`, then reboot.
+
+The guard only reacts to a start that never finished, as after a freeze, a reset or power loss. Rebooting or shutting down
+normally while the DSP is still starting doesn't trigger it, even from the login screen: the DSP starts at boot and
+loads for about 15 s, often while the login screen is already showing. If the DSP doesn't start
+(the tray icon stays grey), `journalctl -b -u xfi-dsp.service` says why.
 To turn the autostart off without uninstalling: `sudo touch /etc/xfi-dsp-noautostart`.
 
 If it still freezes during boot (e.g. the driver itself, not the DSP start), keep the X-Fi driver from loading for

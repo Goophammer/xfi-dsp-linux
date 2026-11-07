@@ -5,6 +5,7 @@
 # Guard: a marker file is written (and synced to disk) before the start and removed once Windows mode reports
 # "running" or "failed". If the marker is still there at the next boot, the previous start never finished - the
 # system froze or was reset while the DSP was loading - so this boot skips the autostart and says so in the log.
+# A normal reboot or shutdown during the start is not a freeze: systemd stops this service first, and the marker goes.
 # Retry by hand:  sudo rm /var/lib/xfi-dsp/starting, then reboot (or run src/winmode_start.sh from the driver folder).
 # Disable the autostart without uninstalling:  sudo touch /etc/xfi-dsp-noautostart
 set -u
@@ -30,6 +31,8 @@ for _ in $(seq 60); do [ -w "$W" ] && break; sleep 0.5; done
 case "$(cat "$W")" in running*|loading*) log "already $(cat "$W")"; exit 0 ;; esac
 
 mkdir -p "$(dirname "$MARK")" && date > "$MARK" && sync
+# systemd stops us on a normal reboot or shutdown; a freeze or power loss can't, so only those leave the marker
+trap 'rm -f "$MARK"; sync; log "stopped during the DSP start (normal reboot or shutdown) - it will start again next boot"; exit 0' TERM INT
 echo start > "$W" || { rm -f "$MARK"; log "could not start: $(cat "$W")"; exit 1; }
 for _ in $(seq 240); do
 	s=$(cat "$W")
