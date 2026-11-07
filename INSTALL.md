@@ -88,8 +88,9 @@ In this folder, as your normal user:
 ./build.sh
 ```
 
-It checks the Creative files, builds the driver (`src/snd-ctxfi.ko`) and the three firmwares
-(`firmware/xfi20k1-dsp-game.bin`, `-ent.bin`, `-hp71.bin`).
+It checks the Creative files, builds the driver (`src/snd-ctxfi.ko`) and the `hp71` firmware
+(`firmware/xfi20k1-dsp-hp71.bin`). For the older modes, name them: `./build.sh game`, `./build.sh ent`, or
+`./build.sh all` for all three.
 
 Then pick one of the three ways to run it:
 
@@ -114,7 +115,8 @@ This loads the default mode, `hp71`:
 ./src/xfi_test.sh
 ```
 
-For another mode, or to switch later, name it: `./src/xfi_test.sh game` or `./src/xfi_test.sh ent`.
+For another mode, or to switch later, name it: `./src/xfi_test.sh game` or `./src/xfi_test.sh ent`. Build its firmware
+first with `./build.sh game` or `./build.sh ent`.
 
 It asks for your password and takes about 20 seconds. The output "X-Fi DSP" and the input "X-Fi DSP Mic" are
 then the defaults, and the taskbar volume works. Effects: `alsamixer -c XFi` (F6 to pick the card), or e.g.
@@ -135,7 +137,8 @@ After a kernel update `xfi_test.sh` rebuilds its own copy of the driver first. I
 
 Both options install the driver, the firmware, the PipeWire profile and an autostart service (`xfi-dsp.service`) that
 loads the DSP in the background after boot. These commands install the default mode, `hp71`. For another mode put
-`env XFI_MODE=game` (or `ent`) after `sudo`: `sudo env XFI_MODE=game ./src/xfi_dsp_install.sh install-dkms`.
+`env XFI_MODE=game` (or `ent`) after `sudo`: `sudo env XFI_MODE=game ./src/xfi_dsp_install.sh install-dkms`. The install
+builds that mode's firmware itself if `./build.sh` didn't.
 
 **Option B, without DKMS:** the driver is installed for the running kernel only.
 ```bash

@@ -1,10 +1,21 @@
 #!/bin/bash
 # build.sh - build the X-Fi DSP driver and firmware on THIS computer (no root needed).
-#   ./build.sh            driver (src/snd-ctxfi.ko) + the firmwares (firmware/xfi20k1-dsp-hp71.bin, -game.bin, -ent.bin)
+#   ./build.sh               driver (src/snd-ctxfi.ko) + the hp71 firmware (firmware/xfi20k1-dsp-hp71.bin)
+#   ./build.sh game ent      driver + the firmwares named (hp71, game, ent)
+#   ./build.sh all           driver + all three firmwares
 # Needs: Creative's installer or the two Creative driver files in creative/ (see INSTALL.md), python3, make, gcc, kernel headers.
 set -eu
 [ "$(id -u)" != 0 ] || { echo "run ./build.sh WITHOUT sudo (as root it leaves root-owned files in this folder)"; exit 1; }
 cd "$(dirname "$(readlink -f "$0")")"
+MODES=()
+for a in "$@"; do
+	case "$a" in
+	hp71|game|ent) MODES+=("$a") ;;
+	all) MODES=(hp71 game ent) ;;
+	*) sed -n '2,6p' "$0"; exit 1 ;;
+	esac
+done
+[ ${#MODES[@]} -gt 0 ] || MODES=(hp71)
 need() { command -v "$1" >/dev/null || { echo "missing: $1 ($2)"; exit 1; }; }
 need python3 "install python3"
 need make "install make (package: make / build-essential)"
@@ -36,7 +47,7 @@ echo "== building the driver for kernel $(uname -r)"
 make -C "$KB" M="$PWD/src" modules
 [ -f src/snd-ctxfi.ko ] || { echo "driver build failed"; exit 1; }
 
-for m in hp71 game ent; do
+for m in $(printf '%s\n' "${MODES[@]}" | awk '!s[$0]++'); do
 	echo "== building the $m firmware from your Creative files"
 	python3 src/fw_blob.py recipes/$m/winmode_seq.txt recipes/$m/mode.json creative firmware/xfi20k1-dsp-$m.bin | head -1
 done

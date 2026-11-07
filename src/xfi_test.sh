@@ -28,7 +28,7 @@ off)
 esac
 ./src/xfi_card_check.sh
 FW=firmware/xfi20k1-dsp-$M.bin
-[ -f "$FW" ] || { echo "$FW missing - run ./build.sh first"; exit 1; }
+[ -f "$FW" ] || { echo "$FW missing - run ./build.sh $M first"; exit 1; }
 # this loads the build in src/, not the installed driver: after a kernel update it has to be built again
 if [ ! -f src/snd-ctxfi.ko ] || [ "$(modinfo -F vermagic src/snd-ctxfi.ko | cut -d' ' -f1)" != "$(uname -r)" ]; then
 	KB=/lib/modules/$(uname -r)/build

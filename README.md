@@ -73,6 +73,7 @@ Full instructions are in **[INSTALL.md](INSTALL.md)**. In short:
    ```bash
    ./build.sh
    ```
+   This builds the default mode, `hp71`. For the older modes add their names, as in `./build.sh game ent`.
 5. Try it. This lasts until the next reboot, then your normal driver is back:
    ```bash
    ./src/xfi_test.sh
