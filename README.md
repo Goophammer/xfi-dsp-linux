@@ -28,6 +28,7 @@ Your games and movies send up to 7.1 audio, the card turns it into surround for 
 | Taskbar volume, controlling the DSP | ✅ |
 | **Recording** | |
 | Microphone recording and Mic Monitor | ✅ |
+| Mic Boost, up to +20 dB | ✅ |
 | EAX reverb on your voice through Mic Monitor (mic recordings stay dry) | ✅ |
 | What U Hear (record everything you hear), selectable in your desktop's sound settings | ✅ |
 | Line-in or S/PDIF | ❌ Not done |

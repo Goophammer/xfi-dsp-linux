@@ -21,6 +21,7 @@ CARD = 'XFi'
 CONF = os.path.expanduser('~/.config/xfi-dsp/settings.json')
 SOURCE_CTL = 'DSP Recording Source'
 LEVEL_CTL = 'DSP Mic Capture Volume'	# the mic's level, also PipeWire's input volume
+BOOST_CTL = 'DSP Mic Boost Capture Volume'	# the input chip's gain, in dB
 MASTER_CTL = 'DSP Master Playback Volume'	# the taskbar volume
 NOT_SAVED = (LEVEL_CTL, MASTER_CTL)		# PipeWire remembers these
 PORTS = {'Mic': 'xfi-dsp-mic', 'What U Hear': 'xfi-dsp-wuh'}
@@ -34,6 +35,7 @@ LAYOUT = [
     ('Effects', 'DSP Crystalizer Playback Switch', 'Crystalizer', 'DSP Crystalizer Level Playback Volume'),
     ('Effects', 'DSP EQ Preset', 'EQ Preset', 'DSP EQ Level Playback Volume'),
     ('Microphone', LEVEL_CTL, 'Mic Level', None),
+    ('Microphone', BOOST_CTL, 'Mic Boost', None),
     ('Microphone', 'DSP Mic Monitor Playback Switch', 'Mic Monitor', None),
     ('Microphone', 'DSP EAX Playback Volume', 'EAX', None),
     ('Microphone', 'DSP Mic Environment Playback Volume', 'Mic FX', None),
@@ -101,9 +103,11 @@ MONITOR_ONLY = ('DSP EAX Playback Volume', 'DSP Mic Environment Playback Volume'
 
 
 def value_text(name, v, c):
-    """what a slider's position means: Bass Boost in dB (3 dB + 0.5 dB per step), the rest in % of its range"""
+    """what a slider's position means: Bass Boost in dB (3 dB + 0.5 dB per step), Mic Boost in dB, the rest in % of its range"""
     if name == BASS_LEVEL:
         return f'{3 + v / 2:g} dB'
+    if name == BOOST_CTL:
+        return f'+{v} dB'
     span = c['max'] - c['min']
     return f'{round(100 * (v - c["min"]) / span) if span else 0}%'
 

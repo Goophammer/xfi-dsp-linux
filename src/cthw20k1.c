@@ -2172,6 +2172,17 @@ void ct20k1_mic_select(struct hw *hw)
 }
 
 /*
+ * Mic boost: the ADC's gain register 0x1c (the mic's channel) in 0.5 dB steps, 0xcf = 0 dB. The stock driver uses
+ * 0xe7 (+12 dB) and 0xf7 (+20 dB). db = 0..20.
+ */
+void ct20k1_mic_boost(struct hw *hw, unsigned int db)
+{
+	if (hw->model != CTSB073X)
+		return;
+	ct20k1_codec_write(hw, 0x001a0080, 0x1c, 0xcf + 2 * min(db, 20u));
+}
+
+/*
  * Windows' "automatically mute speakers": bit 11 of GPIO clears with headphones in the front panel header, and clearing
  * bit 6 silences the rear jacks while the front panel keeps playing. Measured on SB073x only. Without enabled: unmuted.
  */

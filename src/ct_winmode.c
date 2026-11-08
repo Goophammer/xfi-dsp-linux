@@ -34,6 +34,7 @@
 #include <linux/workqueue.h>
 #include <sound/control.h>
 #include <sound/core.h>
+#include <sound/tlv.h>
 #include "ctatc.h"
 #include "cthw20k1.h"
 #include "ct_dsp_fx.h"
@@ -165,6 +166,7 @@ static void wm_register_controls(void);
 #define WM_JACK_MS	300
 #define WM_UNMUTE_MS	500	/* after 'running', before the rear jacks come back */
 static bool wm_auto_mute, wm_auto_mute_added;
+static unsigned int wm_mic_boost;	/* dB, "DSP Mic Boost": the ADC gain, 0 = Windows' start */
 
 static void wm_jack_fn(struct work_struct *work)
 {
@@ -617,6 +619,8 @@ static int wm_thread(void *unused)
 	wm_stream_start(wm.src, wm.map_entry, sa, sa + bytes);
 	wm_apply_effects();
 	ct20k1_mic_select(wm.atc->hw);
+	if (READ_ONCE(wm_mic_boost))
+		ct20k1_mic_boost(wm.atc->hw, READ_ONCE(wm_mic_boost));
 	mutex_lock(&wm.lock);
 	wm.state = WM_RUNNING;
 	mutex_unlock(&wm.lock);
@@ -940,8 +944,54 @@ static const struct snd_kcontrol_new wm_auto_mute_ctl = {
 	.put = wm_auto_mute_put,
 };
 
+static int wm_mic_boost_info(struct snd_kcontrol *kc, struct snd_ctl_elem_info *ui)
+{
+	ui->type = SNDRV_CTL_ELEM_TYPE_INTEGER;
+	ui->count = 1;
+	ui->value.integer.min = 0;
+	ui->value.integer.max = 20;
+	return 0;
+}
+
+static int wm_mic_boost_get(struct snd_kcontrol *kc, struct snd_ctl_elem_value *uv)
+{
+	uv->value.integer.value[0] = READ_ONCE(wm_mic_boost);
+	return 0;
+}
+
+static int wm_mic_boost_put(struct snd_kcontrol *kc, struct snd_ctl_elem_value *uv)
+{
+	long db = uv->value.integer.value[0];
+
+	if (db < 0 || db > 20)
+		return -EINVAL;
+	if (db == READ_ONCE(wm_mic_boost))
+		return 0;
+	WRITE_ONCE(wm_mic_boost, db);
+	if (READ_ONCE(wm.state) == WM_RUNNING)
+		ct20k1_mic_boost(wm.atc->hw, db);
+	return 1;
+}
+
+static const DECLARE_TLV_DB_SCALE(wm_mic_boost_tlv, 0, 100, 0);
+
+/* not "DSP Mic ... Capture Volume": PipeWire's mic path uses the element "DSP Mic" as the input volume */
+static const struct snd_kcontrol_new wm_mic_boost_ctl = {
+	.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
+	.name = "DSP Mic Boost Capture Volume",
+	.access = SNDRV_CTL_ELEM_ACCESS_READWRITE | SNDRV_CTL_ELEM_ACCESS_TLV_READ,
+	.info = wm_mic_boost_info,
+	.get = wm_mic_boost_get,
+	.put = wm_mic_boost_put,
+	.tlv = { .p = wm_mic_boost_tlv },
+};
+static bool wm_mic_boost_added;
+
 static void wm_register_controls(void)
 {
+	if (!wm_mic_boost_added && wm.atc->hw->model == CTSB073X &&
+	    !snd_ctl_add(wm.atc->card, snd_ctl_new1(&wm_mic_boost_ctl, wm.atc)))
+		wm_mic_boost_added = true;
 	if (!wm_auto_mute_added && wm.atc->hw->model == CTSB073X &&
 	    !snd_ctl_add(wm.atc->card, snd_ctl_new1(&wm_auto_mute_ctl, wm.atc)))
 		wm_auto_mute_added = true;

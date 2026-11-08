@@ -218,6 +218,7 @@ another kernel. The distro's analog surround and digital profiles are hidden, be
 | DSP Mic Monitor | hear the microphone through the speakers |
 | DSP Auto Mute Speakers | SB073x: silences the rear jacks while headphones are in the front panel header. Off by default |
 | DSP Mic Capture Volume (Capture page, F4) | microphone recording level (top = Windows' 100) |
+| DSP Mic Boost (Capture page, F4) | gain on the card's input chip, 0 to +20 dB in 1 dB steps, before everything else. Off at the start, the tray restores yours. Raises background noise by the same amount |
 
 A graphical ALSA mixer such as QasMixer shows the same controls as switches and sliders.
 In `alsamixer` DSP Master jumps from 0 to 15: its range ends at -50 dB, which is 15 on that scale, and 0 is mute. The taskbar and the tray panel go lower, in software.
@@ -227,6 +228,7 @@ In `alsamixer` DSP Master jumps from 0 to 15: its range ends at -50 dB, which is
 - **Seat the card firmly and screw it down:** a card that moves in its slot, e.g. when plugging into its jacks, can crash
   (sound stops; the driver then stops touching it and `cat /sys/kernel/xfi_dsp/winmode` says to reboot) or freeze the whole PC.
 - **Microphone silent?** Unplug and replug the jack, then reload or reboot. On one test the mic only came back after that.
+- **People can barely hear you?** Raise DSP Mic Boost (tray: Mic Boost). Normal speech should peak around -10 dBFS.
 - **Recording too loud or distorted?** Lower DSP Mic Capture Volume (shown as `DSP Mic`, Capture page, F4); its top is about +6 dB.
   It also sets the What U Hear level, which starts at 1.0 and is not changed by the taskbar volume.
 - **What U Hear in voice chat:** the other people hear everything you hear, possibly their own voices too.
