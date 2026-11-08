@@ -89,7 +89,7 @@ In this folder, as your normal user:
 ```
 
 It checks the Creative files, builds the driver (`src/snd-ctxfi.ko`) and the `hp71` firmware
-(`firmware/xfi20k1-dsp-hp71.bin`). For the older modes, name them: `./build.sh game`, `./build.sh ent`, or
+(`firmware/xfi20k1-dsp-hp71.bin`). For the stereo modes, name them: `./build.sh game`, `./build.sh ent`, or
 `./build.sh all` for all three.
 
 Then pick one of the three ways to run it:

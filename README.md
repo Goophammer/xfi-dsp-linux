@@ -8,7 +8,7 @@ Your games and movies send up to 7.1 audio, the card turns it into surround for 
 
 > **Status: test release.** Developed and tested on one card, a Sound Blaster X-Fi XtremeGamer (SB073x). Reports from other cards are very welcome.
 
-## Feature status
+## Feature status for Headphone Mode
 
 | Feature | Status |
 |---|---|
@@ -26,8 +26,6 @@ Your games and movies send up to 7.1 audio, the card turns it into surround for 
 | Front panel header (your PC case's headphone and mic jacks) | ✅ |
 | Muting speakers when front panel headphones are plugged in (optional, off by default) | ✅ |
 | Taskbar volume, controlling the DSP | ✅ |
-| Surround speakers on the other output jacks | ❌ Not available yet |
-| Subwoofer output | ❌ Not available yet |
 | **Recording** | |
 | Microphone recording and Mic Monitor | ✅ |
 | EAX reverb on your voice through Mic Monitor (mic recordings stay dry) | ✅ |
@@ -38,7 +36,9 @@ Your games and movies send up to 7.1 audio, the card turns it into surround for 
 | Automatic rebuild after kernel updates (DKMS) | ✅ |
 | Tray app with all controls, restoring your settings after a reboot | ✅ |
 
-This table is for the default mode, `hp71` (Game Mode with headphones and 7.1 downmix). Two older stereo modes, `game` (Game Mode with speakers) and `ent` (Entertainment Mode with speakers), are also included. They have fewer features and aren't my priority right now.
+This table is for the default mode, `hp71` (Game Mode with headphones and 7.1 downmix). Two stereo modes, `game` (Game Mode with speakers) and `ent` (Entertainment Mode with speakers), are also included. They have fewer features and aren't my priority right now.
+
+Rear, side, center and subwoofer outputs (4.1 to 7.1) don't apply to headphone mode. They aren't supported yet, and would need to be added to `game` and `ent` modes.
 
 ## Compatibility
 
@@ -73,7 +73,7 @@ Full instructions are in **[INSTALL.md](INSTALL.md)**. In short:
    ```bash
    ./build.sh
    ```
-   This builds the default mode, `hp71`. For the older modes add their names, as in `./build.sh game ent`.
+   This builds the default mode, `hp71`. For the stereo modes add their names, as in `./build.sh game ent`.
 5. Try it. This lasts until the next reboot, then your normal driver is back:
    ```bash
    ./src/xfi_test.sh
