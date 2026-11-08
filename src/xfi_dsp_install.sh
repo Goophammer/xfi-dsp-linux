@@ -51,7 +51,7 @@ FW=/lib/firmware/ctxfi/xfi20k1-dsp.bin
 CONF=/etc/modprobe.d/xfi-dsp.conf		# old autostart (winmode_autostart=1, before 2026-11-01) - removed
 SVC=/etc/systemd/system/xfi-dsp.service
 DEPMODC=/etc/depmod.d/xfi-dsp.conf
-DKMS_VER=2026.11.08.1
+DKMS_VER=2026.11.08.2
 AUTO=/usr/local/sbin/xfi-dsp-autostart
 TRAY=/usr/local/bin/xfi-tray
 PWC=$UHOME/.config/pipewire/pipewire.conf.d/xfi-dsp.conf	# old: a separate sink node (before 2026-10-30)

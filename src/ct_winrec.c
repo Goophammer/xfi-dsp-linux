@@ -13,6 +13,11 @@
  * copies every frame written since the previous tick from the loop into the ALSA buffer. The loop's frame layout is
  * winrec_loop_ch S32 channels: 2 (measured 2026-10-30: 96000 samples/s; the mic arrives as identical left/right);
  * winrec_left / winrec_right pick the two that become the stereo stream.
+ *
+ * In hp71 the mic is NOT identical left/right (2026-11-08, speech): the left channel is an exact copy 12 dB lower (coherence 1.00
+ * in every band) and doesn't follow the recording level (Mic Boost moves both); the right one follows it. What U Hear is balanced.
+ * Where the left loses its level in the DSP's graph isn't known. The mic is mono, so while recording it (winrec_mono) the right
+ * channel goes to both sides.
  */
 #include <linux/hrtimer.h>
 #include <linux/ktime.h>
@@ -38,6 +43,9 @@ MODULE_PARM_DESC(winrec_left, "Windows-path capture: loop channel used as left")
 static unsigned int winrec_right = 1;
 module_param(winrec_right, uint, 0644);
 MODULE_PARM_DESC(winrec_right, "Windows-path capture: loop channel used as right");
+static bool winrec_mono = true;
+module_param(winrec_mono, bool, 0644);
+MODULE_PARM_DESC(winrec_mono, "Windows-path capture: recording the mic, use the right channel on both sides (default on)");
 
 /*
  * The converter's position runs ahead of what has reached memory: copying up to it took a few stale frames (one loop old) on every
@@ -156,6 +164,8 @@ static enum hrtimer_restart winrec_tick(struct hrtimer *t)
 	dst = (u32 *)rt->dma_area;
 	l = min(winrec_left, r->nch - 1);
 	rr = min(winrec_right, r->nch - 1);
+	if (winrec_mono && ct_winmode_rec_mono())
+		l = rr;
 	for (i = 0; i < n; i++) {
 		u32 *f = r->loop + (size_t)r->c_last * r->nch;
 

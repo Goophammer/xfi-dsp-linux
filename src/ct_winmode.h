@@ -20,6 +20,8 @@ u32 ct_winmode_src(void);
 u32 ct_winmode_channels(void);
 /* recording converter of the loaded firmware (0 = none) - ct_winrec.c */
 u32 ct_winmode_cap_src(void);
+/* recording the mic (not What U Hear): ct_winrec.c sends its full-level channel to both sides */
+bool ct_winmode_rec_mono(void);
 /* the firmware's master volume (Windows' volume slider, after the effects) - driven by ct_winplay's control */
 #define WM_MASTER_NAME	"DSP Master Playback Volume"
 int ct_winmode_set_master(unsigned int v);	/* -ENOENT: the firmware has none */

@@ -166,6 +166,7 @@ static void wm_register_controls(void);
 #define WM_JACK_MS	300
 #define WM_UNMUTE_MS	500	/* after 'running', before the rear jacks come back */
 static bool wm_auto_mute, wm_auto_mute_added;
+static bool wm_rec_stereo;		/* "DSP Recording Source" on What U Hear */
 static unsigned int wm_mic_boost;	/* dB, "DSP Mic Boost": the ADC gain, 0 = Windows' start */
 
 static void wm_jack_fn(struct work_struct *work)
@@ -844,6 +845,8 @@ static int wm_ctl_put(struct snd_kcontrol *kc, struct snd_ctl_elem_value *uv)
 	if (v == c->want)
 		return 0;
 	c->want = v;
+	if (!c->slider && strstr(c->name, "Recording Source"))
+		WRITE_ONCE(wm_rec_stereo, strcmp(c->st[v].label, "Mic"));
 	if (READ_ONCE(wm.state) == WM_RUNNING) {
 		wm_ctl_apply(c);
 		/* a CMSS-3D switch resets the parameters of these controls: put them back */
@@ -1068,6 +1071,11 @@ u32 ct_winmode_channels(void)
 u32 ct_winmode_cap_src(void)
 {
 	return READ_ONCE(wm.cap_src);
+}
+
+bool ct_winmode_rec_mono(void)
+{
+	return !READ_ONCE(wm_rec_stereo);
 }
 
 u32 ct_winmode_src(void)
