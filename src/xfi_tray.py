@@ -133,6 +133,19 @@ def write_control(name, value):
     run('amixer', '-q', '-c', CARD, 'cset', f'name={name}', str(value))
 
 
+def nudge_level():
+    """What U Hear's input volume is PipeWire's software volume. Back on the mic port PipeWire moves the volume to the
+    card but keeps that software volume (turned down by Discord's auto gain or a volume slider, the mic seems dead) until
+    the card's level control changes. So change it one step and back."""
+    r = run('amixer', '-c', CARD, 'cget', f'name={LEVEL_CTL}')
+    m = re.search(r': values=(\d+)', r.stdout) if r else None
+    if not m:
+        return
+    v = int(m.group(1))
+    write_control(LEVEL_CTL, v - 1 if v > 0 else v + 1)
+    write_control(LEVEL_CTL, v)
+
+
 def set_source(item, ctl):
     """Through PipeWire when it has the port, so that it knows; straight to the control otherwise."""
     r = run('pactl', 'list', 'short', 'sources')
@@ -141,6 +154,8 @@ def set_source(item, ctl):
         if 'xfi-dsp-mic' in name and '.monitor' not in name:
             r = run('pactl', 'set-source-port', name, PORTS.get(item, ''))
             if r is not None and r.returncode == 0:
+                if item == 'Mic':
+                    nudge_level()
                 return
     write_control(SOURCE_CTL, ctl['items'].index(item))
 
