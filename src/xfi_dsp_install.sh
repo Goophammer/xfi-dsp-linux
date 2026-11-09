@@ -28,6 +28,8 @@
 #   Mode: sudo env XFI_MODE=hp71|game|ent ./src/xfi_dsp_install.sh install...   default hp71 = 7.1 input through CMSS-3D
 #   Headphone, PipeWire output 7.1; game = Game mode 2/2.1 speakers; ent = Entertainment mode 2/2.1 speakers
 #   To try something without installing: ./src/xfi_test.sh
+#   Secure Boot (untested): the module is signed (DKMS does it, or src/xfi_secureboot.sh) and the key queued for
+#   enrollment; confirm it in the blue MOK Manager screen at the next boot. See src/xfi_secureboot.sh.
 #   sudo ./src/xfi_dsp_install.sh uninstall
 #   ./src/xfi_dsp_install.sh pipewire           only the PipeWire part (no root; Windows mode still by hand)
 #   ./src/xfi_dsp_install.sh pipewire-off       remove only the PipeWire part
@@ -152,6 +154,7 @@ install)
 	else
 		echo "== driver for this kernel only (no DKMS)"
 		dkms_remove; rm -f "$DEPMODC"
+		./src/xfi_secureboot.sh sign src/snd-ctxfi.ko	# only with Secure Boot on
 		install -D -m 644 src/snd-ctxfi.ko "$KDIR/snd-ctxfi.ko"
 	fi
 	depmod -a
@@ -175,6 +178,11 @@ install)
 	if use_dkms; then echo "installed: DKMS xfi-dsp/$DKMS_VER, $FW, $AUTO, $SVC"
 	else echo "installed: $KDIR/snd-ctxfi.ko, $FW, $AUTO, $SVC"; fi
 	pw_install
+	if use_dkms && mokutil --sb-state 2>/dev/null | grep -qi 'SecureBoot enabled' &&
+	   [ -z "$(modinfo -F signer "$(modinfo -n snd_ctxfi)" 2>/dev/null)" ]; then
+		echo "WARNING: Secure Boot is on but DKMS did not sign the module (DKMS older than 3.0?) - it won't load."
+	fi
+	./src/xfi_secureboot.sh enroll || echo "WARNING: the signing key could not be queued for enrollment - with Secure Boot on the driver won't load"
 	echo "Reboot to start it."
 	echo "Effects: alsamixer -c XFi (DSP Crystalizer, DSP SVM, DSP EQ, ...)"
 	;;

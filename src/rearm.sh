@@ -83,7 +83,12 @@ else
 		INSMOD_ARGS="winmode_fw=ctxfi/xfi20k1-dsp-test.bin ${INSMOD_ARGS:-}"
 	fi
 	# shellcheck disable=SC2086
-	insmod "$KO" ${INSMOD_ARGS:-} || { echo "insmod failed"; user_audio start; exit 1; }
+	"$(dirname "$0")/xfi_secureboot.sh" sign "$KO"	# only with Secure Boot on
+	insmod "$KO" ${INSMOD_ARGS:-} || {
+		echo "insmod failed"
+		mokutil --sb-state 2>/dev/null | grep -qi 'SecureBoot enabled' &&
+			echo "Secure Boot is on: is the signing key enrolled? ./src/xfi_secureboot.sh status"
+		user_audio start; exit 1; }
 fi
 sleep 0.3
 user_audio start

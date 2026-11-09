@@ -20,7 +20,7 @@ Your games and movies send up to 7.1 audio, the card turns it into surround for 
 | Configurable EQ | ❌ Not done |
 | Bass Boost, with level slider (3 to 12 dB) | ✅ |
 | Bass Boost cutoff slider | ❌ Not added yet, stays at 100 Hz |
-| EAX on music or games | ➖ No effect, only audible through Mic Monitor |
+| EAX on music or games | ➖ No effect, only audible through Mic Monitor, just like on Windows* |
 | **Output** | |
 | Stereo output on the green jack | ✅ |
 | Front panel header (your PC case's headphone and mic jacks) | ✅ |
@@ -52,7 +52,7 @@ Rear, side, center and subwoofer outputs (4.1 to 7.1) don't apply to headphone m
 | **Tested games** | ARC Raiders (7.1)<br>Squad (7.1)<br>Star Wars Jedi: Survivor (7.1)<br>Star Wars Battlefront II 2017 (7.1)<br>CMSS-3D works as expected, with much improved positional audio, as long as the game's audio output isn't set to mono or stereo/headphones. Always select System Default or Speakers as the audio output in the game's settings |
 | **Kernels older than 7.0** | Untested, may not compile |
 | **Audio server** | PipeWire with WirePlumber |
-| **Secure Boot** | Off, or sign the module yourself |
+| **Secure Boot** | The installer signs the driver and asks you to enroll its key once at the next boot. Untested so far, please report |
 | **Nobara's Easy Anti-Cheat kernel** | Can't load this driver: it only accepts modules signed by Nobara |
 
 ## You need your own Creative driver files
@@ -98,6 +98,7 @@ The recipes in this project hold those hardware register values, and refer to th
 
 - **Secure the card firmly in its slot.** A card that moves, for example when you plug into its jacks, can crash or freeze the whole PC.
 - **Check your game's audio setting.** CMSS-3D needs surround from the game, so use System Default, Surround, Speakers or Auto, not Stereo, Headphones or Mono.
+- **\*EAX does nothing on music or games in `hp71`, on Windows too.** In Game Mode, EAX is a reverb that games drive themselves: under Windows, a game with EAX support sends each sound into it through Creative's DirectSound3D or OpenAL drivers, and the EAX slider only sets how loud the reverb is. Music, and games without EAX support, play as one plain stream that never reaches the reverb. On Linux games have no way to use the card's EAX, but [DSOAL](https://github.com/kcat/dsoal) with OpenAL Soft recreates EAX in software for old DirectSound3D games, also under Wine and Proton, and OpenAL Soft itself does it for OpenAL games. The only thing wired into the card's reverb is your mic (Mic Environment), which is why you hear EAX through Mic Monitor.
 - **Using several effects at once can cause clipping.** If it does, lower the volume.
 - **Bass Boost can clip** on music that already has a lot of bass. Lower the level or the volume.
 - With **What U Hear in voice chat,** other people hear everything you hear.

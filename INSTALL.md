@@ -72,8 +72,15 @@ sudo apt install python3 python3-pyqt6 make gcc linux-headers-$(uname -r) alsa-u
 sudo pacman -S python python-pyqt6 make gcc linux-headers alsa-utils pciutils psmisc libpulse                          # Arch
 ```
 
-**Secure Boot:** if it is on, the kernel refuses unsigned modules ("Key was rejected by service"). Either turn
-Secure Boot off in the BIOS for this test, or sign the module (not covered here).
+**Secure Boot (untested so far, please report):** if it is on, the kernel refuses unsigned modules ("Key was rejected
+by service"). The scripts sign the driver with DKMS's signing key (they create it if needed, `mokutil` and `openssl`
+must be installed), but the kernel only trusts that key once it's enrolled. Do that once, before testing:
+```bash
+sudo ./src/xfi_secureboot.sh enroll
+```
+It asks you to choose a one-time password. Reboot: a blue "MOK Manager" screen appears (press a key, it waits only
+10 seconds), choose Enroll MOK, Continue, Yes, type the password, Reboot. `./src/xfi_secureboot.sh status` shows
+whether it worked. If you install the driver (step 5), the installer does this for you.
 
 **Nobara's Easy Anti-Cheat kernel (`kernel-eac`) cannot load this driver:** it only accepts modules signed by Nobara, whatever keys
 you enroll. Use it with the distro's normal X-Fi driver (no DSP effects), and a normal kernel for this driver. Don't install
@@ -150,6 +157,10 @@ sudo ./src/xfi_dsp_install.sh install-nodkms
 ```bash
 sudo ./src/xfi_dsp_install.sh install-dkms
 ```
+
+With **Secure Boot** on (untested so far), the installer signs the driver and, unless its key is already enrolled, asks
+for a one-time password: at the next boot confirm the key in the blue "MOK Manager" screen (Enroll MOK, Continue, Yes,
+the password, Reboot).
 
 Then **reboot**. A few seconds after logging in the DSP is running; check with:
 ```bash
