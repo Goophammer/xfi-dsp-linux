@@ -49,7 +49,7 @@ Rear, side, center and subwoofer outputs (4.1 to 7.1) don't apply to headphone m
 | **Other 20K1 cards** | Untested. They may work, and the mic will probably stay silent |
 | **20K2 cards (Titanium)** | Not supported |
 | **Tested systems** | Nobara 44 (Linux 7.2 and 7.3), card in a PCIe-to-PCI adapter. Xubuntu 26.04 (Linux 7.0), a different PC with a native PCI slot. `hp71` was tested on Nobara only |
-| **Tested games** | Squad (7.1), Star Wars Jedi: Survivor (7.1) and Star Wars Battlefront II 2017 (7.1). CMSS-3D works as expected, with much improved positional audio, as long as the game's audio output isn't set to mono or stereo |
+| **Tested games** | ARC Raiders (7.1)<br>Squad (7.1)<br>Star Wars Jedi: Survivor (7.1)<br>Star Wars Battlefront II 2017 (7.1)<br>CMSS-3D works as expected, with much improved positional audio, as long as the game's audio output isn't set to mono or stereo/headphones. Always select System Default or Speakers as the audio output in the game's settings |
 | **Kernels older than 7.0** | Untested, may not compile |
 | **Audio server** | PipeWire with WirePlumber |
 | **Secure Boot** | Off, or sign the module yourself |
@@ -97,7 +97,7 @@ The recipes in this project hold those hardware register values, and refer to th
 ## Good to know
 
 - **Secure the card firmly in its slot.** A card that moves, for example when you plug into its jacks, can crash or freeze the whole PC.
-- **Check your game's audio setting.** CMSS-3D needs surround from the game, so use Surround, Speakers or Auto, not Stereo or Mono.
+- **Check your game's audio setting.** CMSS-3D needs surround from the game, so use System Default, Surround, Speakers or Auto, not Stereo, Headphones or Mono.
 - **Using several effects at once can cause clipping.** If it does, lower the volume.
 - **Bass Boost can clip** on music that already has a lot of bass. Lower the level or the volume.
 - With **What U Hear in voice chat,** other people hear everything you hear.
