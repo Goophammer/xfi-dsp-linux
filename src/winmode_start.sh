@@ -20,7 +20,6 @@ while :; do
 	running*)
 		printf '\rloading the DSP ... 100%%\n'
 		echo "Windows mode loaded - the X-Fi DSP is running."
-		echo "Output: 'X-Fi DSP'. Crystalizer: amixer -c XFi cset name='DSP Crystalizer Playback Switch' on"
 		exit 0 ;;
 	failed*)
 		printf '\n'; echo "Windows mode FAILED: ${s#failed: }"

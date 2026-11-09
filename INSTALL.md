@@ -118,7 +118,7 @@ This loads the default mode, `hp71`:
 For another mode, or to switch later, name it: `./src/xfi_test.sh game` or `./src/xfi_test.sh ent`. Build its firmware
 first with `./build.sh game` or `./build.sh ent`.
 
-It asks for your password and takes about 20 seconds. The output "X-Fi DSP" and the input "X-Fi DSP Mic" are
+It asks for your password and takes about 10 seconds. The output "X-Fi DSP" and the input "X-Fi DSP Mic" are
 then the defaults, and the taskbar volume works. Effects: `alsamixer -c XFi` (F6 to pick the card), or e.g.
 ```bash
 amixer -c XFi cset name='DSP Crystalizer Playback Switch' on
@@ -151,7 +151,7 @@ sudo ./src/xfi_dsp_install.sh install-nodkms
 sudo ./src/xfi_dsp_install.sh install-dkms
 ```
 
-Then **reboot**. About 15 seconds after logging in the DSP is running; check with:
+Then **reboot**. A few seconds after logging in the DSP is running; check with:
 ```bash
 cat /sys/kernel/xfi_dsp/winmode
 ```
@@ -179,7 +179,7 @@ To try again later: `sudo rm /var/lib/xfi-dsp/starting`, then reboot.
 
 The guard only reacts to a start that never finished, as after a freeze, a reset or power loss. Rebooting or shutting down
 normally while the DSP is still starting doesn't trigger it, even from the login screen: the DSP starts at boot and
-loads for about 15 s, often while the login screen is already showing. If the DSP doesn't start
+loads for a few seconds, sometimes while the login screen is already showing. If the DSP doesn't start
 (the tray icon stays grey), `journalctl -b -u xfi-dsp.service` says why.
 To turn the autostart off without uninstalling: `sudo touch /etc/xfi-dsp-noautostart`.
 
@@ -236,7 +236,7 @@ In `alsamixer` DSP Master jumps from 0 to 15: its range ends at -50 dB, which is
   at the wrong moment. `./src/xfi_profile.sh` brings it back.
 - **hp71:** PipeWire shows a 7.1 output, also when you only have headphones - that's correct, CMSS-3D makes stereo from it.
   With CMSS-3D off you hear plain left/right.
-- **Sleep/suspend** works: the DSP reloads by itself about 12 seconds after waking up.
+- **Sleep/suspend** works: the DSP reloads by itself a few seconds after waking up.
 - While the DSP runs, the analog/digital outputs of the normal Linux driver (the "Analog Stereo/Surround" profiles)
   are silent - use the "X-Fi DSP" profile.
 

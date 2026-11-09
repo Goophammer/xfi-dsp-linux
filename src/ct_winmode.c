@@ -80,6 +80,18 @@ static unsigned int winmode_spacing_us = 5;
 module_param(winmode_spacing_us, uint, 0644);
 MODULE_PARM_DESC(winmode_spacing_us, "Windows mode: minimum time between firmware writes in microseconds (5)");
 
+/*
+ * The firmware's OP_DELAYs are every pause of 200 us or more in the Windows trace (fw_blob.py): 7-11 s of a start.
+ * Only the first ~470 ms matter, the chip and clock setup before the first transport buffer op (ops 0-35 in all three
+ * modes). After that the DSP is synchronised by the handshake and mailbox waits. Tested on hp71 (2026-11-09): with
+ * every later pause dropped the mailbox never answered (all 43 waits timed out, the load was unreliable), with only
+ * the setup pauses kept all waits passed, the effects worked, and the DSP start went from 16 s to 3.8 s.
+ * winmode_full_pauses=1 replays all of them, as before.
+ */
+static bool winmode_full_pauses;
+module_param(winmode_full_pauses, bool, 0644);
+MODULE_PARM_DESC(winmode_full_pauses, "Windows mode: replay every pause of the Windows trace, not just the chip setup's (slow start, off)");
+
 #define FW_MAGIC	0x57494658	/* "XFIW" */
 #define OP_WRITE	1
 #define OP_DELAY	2
@@ -416,6 +428,8 @@ static int wm_stream_start(u32 src, u32 map, u32 sa, u32 la)
 struct wm_stats {
 	u32 waits, timeouts, mb_waits, mb_timeouts;
 	s64 wait_us, wait_max;
+	u64 delay_us;			/* pauses slept */
+	s64 mb_wait_us, mb_wait_max;
 };
 
 /*
@@ -426,6 +440,7 @@ struct wm_stats {
 static int wm_run(const __le32 *p, u32 n, u32 sa, u32 la, struct wm_stats *st, char *msg, size_t msgsz)
 {
 	struct device *dev = wm.atc->card->dev;
+	bool setup_done = false;	/* past the chip setup: its pauses are the only ones replayed */
 
 	memset(st, 0, sizeof(*st));
 	WRITE_ONCE(wm.done, 0);
@@ -456,6 +471,9 @@ static int wm_run(const __le32 *p, u32 n, u32 sa, u32 la, struct wm_stats *st, c
 			break;
 		case OP_DELAY:
 			w1 = min(w1, 1000000u);
+			if (setup_done && !winmode_full_pauses)
+				break;
+			st->delay_us += w1;
 			if (w1 <= 20)
 				udelay(w1);
 			else
@@ -463,6 +481,7 @@ static int wm_run(const __le32 *p, u32 n, u32 sa, u32 la, struct wm_stats *st, c
 			break;
 		case OP_BUFLO:
 		case OP_BUFHI:
+			setup_done = true;
 			if (ct_dsp_fx_xfer_buf(w1, &bus, &cpu)) {
 				snprintf(msg, msgsz, "op %u: unknown buffer id %u", i, w1);
 				return -EINVAL;
@@ -488,6 +507,7 @@ static int wm_run(const __le32 *p, u32 n, u32 sa, u32 la, struct wm_stats *st, c
 		case OP_WAITEQ:
 			if (winmode_handshake) {
 				ktime_t ws = ktime_get(), end = ktime_add_ms(ws, winmode_wait_ms);
+				s64 d;
 
 				while (rd(arg) != w1) {
 					if (ktime_after(ktime_get(), end)) {
@@ -499,6 +519,9 @@ static int wm_run(const __le32 *p, u32 n, u32 sa, u32 la, struct wm_stats *st, c
 					}
 				}
 				st->mb_waits++;
+				d = ktime_us_delta(ktime_get(), ws);
+				st->mb_wait_us += d;
+				st->mb_wait_max = max(st->mb_wait_max, d);
 			}
 			break;
 		case OP_WAITZ:
@@ -610,6 +633,9 @@ static int wm_thread(void *unused)
 			 "%u mailbox waits, %u timed out; spacing %u us\n",
 			 winmode_handshake ? "on" : "off", st.waits, st.wait_us, st.wait_max, st.timeouts,
 			 st.mb_waits, st.mb_timeouts, winmode_spacing_us);
+		dev_info(dev, "X-Fi Windows mode: pauses %llu ms (%s), mailbox waits %lld ms, longest %lld ms\n",
+			 st.delay_us / 1000, winmode_full_pauses ? "all" : "chip setup only",
+			 st.mb_wait_us / 1000, st.mb_wait_max / 1000);
 	}
 	if (err) {
 		wm_halt_dsp();		/* never leave a half-loaded program running */
