@@ -61,12 +61,14 @@ The Windows driver's start is recorded in a VM (VFIO passthrough, every register
 - **Stereo gets extra processing on Windows:** with CMSS on, stereo input gets ±47 Hz side frequencies (48000/1024), different left and right from identical input, and slow settling. Real 7.1 input doesn't, and the DSP gets no parameter writes during it. It only happens with CMSS on, so it's probably Creative's software, not Windows itself, but that isn't proven. Linux doesn't do this.
 - The Center/Subwoofer jack stayed silent in `game` and `hp71`.
 
-## Entertainment mode with headphones (tested, not included)
+## Entertainment mode with headphones (tested, not included as a mode)
+
+Its EQ (with Bass and Treble), Bass Boost and What U Hear are in `ent`: their registers start the same in both sessions. Its own start couldn't be used for `ent`: the mic was silent there (the input mixing section, which differs between Windows sessions, read other rings).
 
 - **Windows' speaker setting decides the stream format.** With Windows on 7.1, music reaches the card as 8 channels; on Stereo, as 2. The DSP layout differs between the two, so a firmware has to come from a session with the matching setting.
 - **CMSS-3D with headphones has one slider, Front to Surround** (Xpand and Stereo Surround only exist with 4.1 and up). It writes params `0x184/0x185` and `0x18C/0x18D` (0.44/0.9 of the first): 0 at Front, 0.9 at 50 % (default), 2.36 at Surround.
 - **Replayed on Linux, the slider makes no audible difference**, although its values reach the card. CMSS then sounds like Game mode's at every position. On Windows the slider spreads stereo music around you, so that part is most likely Creative's software on the CPU: with CMSS on, Windows adds ±47 Hz (48000/1024) sidebands to stereo input without writing to the card. Not proven, but it can't be replayed either way.
-- **EQ, Bass and Treble are one filter bank.** Windows computes one curve from all three and rewrites the whole bank on every move.
+- **EQ, Bass and Treble are one filter bank** (params `0x1A4–0x1F8`). Windows computes one curve from all three and rewrites the whole bank on every move, so `ent` offers Windows' Bass and Treble slider ends as extra entries of the EQ list, one choice at a time.
 - Everything else works as in `ent`: the same 4× setup, recording path, master volume, Crystalizer and Mic Monitor addresses. What U Hear rewires mixer entries and sets 8 gains, together with the next recording start.
 
 ## Recording

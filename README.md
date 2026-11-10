@@ -37,7 +37,7 @@ Your games and movies send up to 7.1 audio, the card turns it into surround for 
 | Automatic rebuild after kernel updates (DKMS) | ✅ |
 | Tray app with all controls, restoring your settings after a reboot | ✅ |
 
-This table is for the default mode, `hp71` (Game Mode with headphones and 7.1 downmix). Two stereo modes, `game` (Game Mode with speakers) and `ent` (Entertainment Mode with speakers), are also included. They have fewer features and aren't my priority right now.
+This table is for the default mode, `hp71` (Game Mode with headphones and 7.1 downmix). Two stereo modes, `game` (Game Mode with speakers) and `ent` (Entertainment Mode with speakers), are also included. They have fewer features and aren't my priority right now. `ent` has Crystalizer, SVM, all EQ presets plus Bass and Treble, Bass Boost, mic, Mic Monitor and What U Hear, but no CMSS-3D: with stereo speakers it has no effect, on Windows too.
 
 Rear, side, center and subwoofer outputs (4.1 to 7.1) don't apply to headphone mode. They aren't supported yet, and would need to be added to `game` and `ent` modes.
 

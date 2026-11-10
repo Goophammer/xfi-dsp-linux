@@ -30,11 +30,11 @@ but it probably works with them just fine:
 |---|---|---|---|
 | Crystalizer + level, SVM | yes | yes | yes |
 | Taskbar volume, mic monitor, microphone recording | yes | yes | yes |
-| EQ | all 10 presets by name + level | 2 presets + level | no (not captured yet) |
-| CMSS-3D | **yes**, headphone surround | - | switch present, **no effect** (needs a surround speaker setup, not built yet) |
+| EQ | all 10 presets by name + level | 2 presets + level | all 10 presets by name + level, plus Bass and Treble |
+| CMSS-3D | **yes**, headphone surround | - | - (no effect with 2/2.1 speakers, on Windows too) |
 | EAX, Mic Environment | yes, heard through Mic Monitor; mic recordings stay dry | - | - |
-| Recording source What U Hear | yes | - | - |
-| Bass Boost | yes | - | - |
+| Recording source What U Hear | yes | - | yes |
+| Bass Boost | yes | - | on/off, at Windows' default level |
 | Input from apps | 7.1 (stereo apps stay left/right) | stereo | stereo |
 | Card's internal rate | 2x (96 kHz) | 2x (96 kHz) | 4x (192 kHz) |
 
@@ -220,12 +220,12 @@ another kernel. The distro's analog surround and digital profiles are hidden, be
 | DSP Master | the volume (moved by the taskbar slider through PipeWire) |
 | DSP Crystalizer / DSP Crystalizer Level | Crystalizer on/off and intensity |
 | DSP SVM | Smart Volume Management |
-| DSP EQ Preset / DSP EQ Level | EQ (game: presets A/B are two of Creative's presets; hp71: all 10 by name). Each preset has its own level: picking a preset resets it and the slider stays where it was |
-| DSP CMSS-3D | hp71: headphone surround. ent (with Level): no effect with 2/2.1 speakers |
+| DSP EQ Preset / DSP EQ Level | EQ (game: presets A/B are two of Creative's presets; hp71 and ent: all 10 by name). Each preset has its own level: picking a preset resets it and the slider stays where it was. ent also lists Bass -/+, Treble -/+ and Bass + Treble +: Windows' Bass and Treble sliders at their ends. They share the EQ's filters, so it's one choice at a time |
+| DSP CMSS-3D | hp71: headphone surround |
 | DSP EAX | hp71: EAX level, bottom = off. No effect on music; with Mic Environment it changes your voice in Mic Monitor, not in mic recordings |
 | DSP Mic Environment | hp71: sends the mic through EAX. Hear it with DSP Mic Monitor and DSP EAX on |
-| DSP Bass Boost / DSP Bass Boost Level | hp71: more bass in the headphones. The level runs from 3 dB (0) to 12 dB (18) in 0.5 dB steps, 6 = Windows' default, and can clip at the top. The cutoff stays at 100 Hz. What U Hear recordings don't include it |
-| DSP Recording Source | hp71: `Mic`, or `What U Hear` = everything you hear (music, games, the mic with its effects). The mic alone stays dry. Also selectable as the input's port in your desktop's sound settings |
+| DSP Bass Boost / DSP Bass Boost Level | more bass. ent: on/off only, at Windows' default level. hp71: the level runs from 3 dB (0) to 12 dB (18) in 0.5 dB steps, 6 = Windows' default, and can clip at the top. The cutoff stays at 100 Hz. What U Hear recordings don't include it |
+| DSP Recording Source | hp71 and ent: `Mic`, or `What U Hear` = everything you hear (music, games, the mic with its effects). The mic alone stays dry. Also selectable as the input's port in your desktop's sound settings |
 | DSP Mic Monitor | hear the microphone through the speakers |
 | DSP Auto Mute Speakers | SB073x: silences the rear jacks while headphones are in the front panel header. Off by default |
 | DSP Mic Capture Volume (Capture page, F4) | microphone recording level (top = Windows' 100) |

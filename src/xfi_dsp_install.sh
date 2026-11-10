@@ -114,6 +114,7 @@ pw_install() {
 	case $MODE in
 	hp71) OUT_MAP=front-left,front-right,front-center,lfe,rear-left,rear-right,side-left,side-right
 	      IN_PATHS="$P/xfi-dsp-mic $P/xfi-dsp-wuh" ;;
+	ent) OUT_MAP=left,right; IN_PATHS="$P/xfi-dsp-mic $P/xfi-dsp-wuh" ;;	# ent has What U Hear too (2026-11-09)
 	*) OUT_MAP=left,right; IN_PATHS="$P/xfi-dsp-input" ;;
 	esac
 	as_user sh -c "sed 's|@PATHS_DIR@|$(dirname "$PSET")|; s|@OUT_MAP@|$OUT_MAP|; s|@IN_PATHS@|$IN_PATHS|' src/xfi-dsp-profile.conf > '$PSET'
