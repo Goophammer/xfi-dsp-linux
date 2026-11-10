@@ -203,9 +203,11 @@ sudo ./src/xfi_dsp_install.sh uninstall
 
 ## Tray app
 
-The permanent install starts a tray icon at login: red bars while the DSP runs, grey when it doesn't. Click it for a small panel with the effects, the
-microphone and the recording source. It shows what the loaded mode has, and **restores your settings after every boot**, which the driver alone doesn't do.
-Master and Mic Level stay PipeWire's, which remembers them. To try it during a test: `python3 src/xfi_tray.py`.
+The permanent install starts a tray icon at login: red bars while the DSP runs, grey when it doesn't. Click it for a panel with tabs for the effects,
+the EQ and the microphone, and a Master Volume knob. It shows what the loaded mode has, and **restores your settings after every boot**, which the driver
+alone doesn't do. Master and Mic Level stay PipeWire's, which remembers them. Close the panel with its ✕ or Esc, move it by its title strip. It follows your
+desktop theme's colours; untick **Use system colors** in the tray icon's right-click menu for a dark blue look. To try it during a test:
+`python3 src/xfi_tray.py`.
 
 ## PipeWire profiles
 

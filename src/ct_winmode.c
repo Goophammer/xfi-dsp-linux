@@ -118,7 +118,7 @@ static struct {
 	char why[96];
 	u32 done, total;
 	u32 src, map_entry, loop_sa;	/* playback stream (firmware v2 header) */
-	u32 channels;			/* of the playback stream: 2, or 8 (src word bits 16+; converters src..src+7) */
+	u32 channels;			/* of the playback stream: 2, 4 or 8 (src word bits 16+; converters src..src+n-1) */
 	u32 cap_src;			/* recording converter (header word 7, 0 = none; its loop: ct_dsp_fx_rec_buf) */
 } wm = { .src = 202, .map_entry = 0x131940, .loop_sa = 0x1B7D000, .channels = 2 };
 
@@ -603,7 +603,9 @@ static int wm_thread(void *unused)
 	mutex_lock(&wm.lock);
 	wm.total = n;
 	wm.src = le32_to_cpu(p[4]) & 0xFFFF;
-	wm.channels = le32_to_cpu(p[4]) >> 16 == 8 ? 8 : 2;
+	wm.channels = le32_to_cpu(p[4]) >> 16;		/* 8 (hp71), 4 (Ent 4.1 test), else stereo */
+	if (wm.channels != 8 && wm.channels != 4)
+		wm.channels = 2;
 	wm.map_entry = le32_to_cpu(p[5]);
 	wm.loop_sa = le32_to_cpu(p[6]);
 	wm.cap_src = le32_to_cpu(p[7]) < 256 ? le32_to_cpu(p[7]) : 0;

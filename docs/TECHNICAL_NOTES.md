@@ -100,7 +100,8 @@ Its EQ (with Bass and Treble), Bass Boost and What U Hear are in `ent`: their re
 
 ## Open questions
 
-- How does audio reach the rear, side and subwoofer outputs? The subwoofer is the orange jack. Dumps from real Windows show the 4.1 setup rebuilds the mixer (about 1,100 words) and 90 DSP inputs, and the rears reuse existing DAC channels. Needs a traced start in a speaker setup.
+- **Speaker outputs beyond stereo (tested, no mode yet).** Windows builds a speaker setup by switching to it after its start: the 4.1 switch rebuilds the mixer and 90 DSP inputs and adds one DSP output map entry, and the music stream is set up again with 4 channels. Replaying the start *through* that switch works: a 4-channel stream plays front on the green jack and rear on the rear jack. The driver accepts such 4-channel firmwares. CMSS-3D doesn't move stereo music to the rears this way; that upmix is most likely Creative's software on Windows. 5.1/7.1 (center, subwoofer, side) would need their own traces.
+- **Switching speaker setups live isn't solved.** A traced cycle of 14 switches shows each switch builds the same structures, but places them block by block wherever the history of earlier switches left space, like a heap allocator. A recorded switch only fits the exact state it came from, so changing setups means restarting the card with that setup's firmware.
 - Where does the left mic channel lose its level in `hp71` (see Recording)? What U Hear through the same level ops is balanced.
 - The front panel mic header records about 24 dB weaker than the rear jack, with the same mic and settings. Is it wired to another input, or does it need its own select?
 - During startup, what opens the normal sound device and causes "PLL initialization failed", and what are the 6 waits that time out at op 296131? Both look harmless.

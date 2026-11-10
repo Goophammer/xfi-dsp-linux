@@ -53,7 +53,7 @@ FW=/lib/firmware/ctxfi/xfi20k1-dsp.bin
 CONF=/etc/modprobe.d/xfi-dsp.conf		# old autostart (winmode_autostart=1, before 2026-11-01) - removed
 SVC=/etc/systemd/system/xfi-dsp.service
 DEPMODC=/etc/depmod.d/xfi-dsp.conf
-DKMS_VER=2026.11.09.1
+DKMS_VER=2026.11.10.1
 AUTO=/usr/local/sbin/xfi-dsp-autostart
 TRAY=/usr/local/bin/xfi-tray
 PWC=$UHOME/.config/pipewire/pipewire.conf.d/xfi-dsp.conf	# old: a separate sink node (before 2026-10-30)
@@ -117,6 +117,7 @@ pw_install() {
 	ent) OUT_MAP=left,right; IN_PATHS="$P/xfi-dsp-mic $P/xfi-dsp-wuh" ;;	# ent has What U Hear too (2026-11-09)
 	*) OUT_MAP=left,right; IN_PATHS="$P/xfi-dsp-input" ;;
 	esac
+	OUT_MAP=${XFI_OUT_MAP:-$OUT_MAP}	# test firmwares with another channel layout, e.g. front-left,front-right,rear-left,rear-right
 	as_user sh -c "sed 's|@PATHS_DIR@|$(dirname "$PSET")|; s|@OUT_MAP@|$OUT_MAP|; s|@IN_PATHS@|$IN_PATHS|' src/xfi-dsp-profile.conf > '$PSET'
 		sed -n '/^\[Mapping analog-stereo\]/,/^#/p' /usr/share/alsa-card-profile/mixer/profile-sets/default.conf >> '$PSET'"
 	as_user sh -c "sed 's|@PROFILE_SET@|$PSET|' src/wireplumber-xfi-dsp.conf > '$WPC'"

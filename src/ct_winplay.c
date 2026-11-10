@@ -80,7 +80,7 @@ struct winplay {
 	u32 src_base;			/* playback converter's registers */
 	u32 *loop;			/* CPU address of device address sa */
 	u32 sa, la, nloop;		/* converter loop (device addresses), length in frames */
-	u32 ch;				/* channels of this stream; the loop needs the firmware's (2 or 8) */
+	u32 ch;				/* channels of this stream; the loop needs the firmware's (2, 4 or 8) */
 	u32 c_last, w;			/* converter position / our write position, frames within the loop */
 	snd_pcm_uframes_t hw_ptr;	/* frames consumed from the ALSA buffer */
 	snd_pcm_uframes_t period_acc;
