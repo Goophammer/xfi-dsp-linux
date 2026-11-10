@@ -17,6 +17,7 @@ Your games and movies send up to 7.1 audio, the card turns it into surround for 
 | Crystalizer, with level slider | ✅ |
 | SVM (Smart Volume Management) | ✅ |
 | EQ: all 10 presets, with level slider | ✅ |
+| Bass and Treble, as extra entries in the EQ list (one choice at a time) | ✅ |
 | Configurable EQ | ❌ Not done |
 | Bass Boost, with level slider (3 to 12 dB) | ✅ |
 | Bass Boost cutoff slider | ❌ Not added yet, stays at 100 Hz |

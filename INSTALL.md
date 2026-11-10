@@ -30,7 +30,7 @@ but it probably works with them just fine:
 |---|---|---|---|
 | Crystalizer + level, SVM | yes | yes | yes |
 | Taskbar volume, mic monitor, microphone recording | yes | yes | yes |
-| EQ | all 10 presets by name + level | 2 presets + level | all 10 presets by name + level, plus Bass and Treble |
+| EQ | all 10 presets by name + level, plus Bass and Treble | 2 presets + level | all 10 presets by name + level, plus Bass and Treble |
 | CMSS-3D | **yes**, headphone surround | - | - (no effect with 2/2.1 speakers, on Windows too) |
 | EAX, Mic Environment | yes, heard through Mic Monitor; mic recordings stay dry | - | - |
 | Recording source What U Hear | yes | - | yes |
@@ -220,7 +220,7 @@ another kernel. The distro's analog surround and digital profiles are hidden, be
 | DSP Master | the volume (moved by the taskbar slider through PipeWire) |
 | DSP Crystalizer / DSP Crystalizer Level | Crystalizer on/off and intensity |
 | DSP SVM | Smart Volume Management |
-| DSP EQ Preset / DSP EQ Level | EQ (game: presets A/B are two of Creative's presets; hp71 and ent: all 10 by name). Each preset has its own level: picking a preset resets it and the slider stays where it was. ent also lists Bass -/+, Treble -/+ and Bass + Treble +: Windows' Bass and Treble sliders at their ends. They share the EQ's filters, so it's one choice at a time |
+| DSP EQ Preset / DSP EQ Level | EQ (game: presets A/B are two of Creative's presets; hp71 and ent: all 10 by name). Each preset has its own level: picking a preset resets it and the slider stays where it was. hp71 and ent also list Bass -/+, Treble -/+ and Bass + Treble +: the ends of Windows' Bass and Treble sliders (from Entertainment mode; Windows' Game mode has none). They share the EQ's filters, so it's one choice at a time |
 | DSP CMSS-3D | hp71: headphone surround |
 | DSP EAX | hp71: EAX level, bottom = off. No effect on music; with Mic Environment it changes your voice in Mic Monitor, not in mic recordings |
 | DSP Mic Environment | hp71: sends the mic through EAX. Hear it with DSP Mic Monitor and DSP EAX on |
