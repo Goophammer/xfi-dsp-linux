@@ -49,16 +49,25 @@ The Windows driver's start is recorded in a VM (VFIO passthrough, every register
 ## 7.1 input and CMSS-3D Headphone (mode `hp71`)
 
 - **8-lane stream:** converters 202–209, control `0x1708CE`, partners `0x1008C0`, CCR `0x2000400`, CA +`0x400`, loop `0x1B7D000–0x1B84800` (960 frames × 8 × 4 bytes). PCM order FL FR FC LFE BL BR SL SR.
-- **CMSS-3D Headphone switches with mixer entries and parameters only.** MacroFX and Elevation Filter wrote nothing.
+- **CMSS-3D Headphone switches with mixer entries and parameters only.** MacroFX and Elevation Filter wrote nothing, also with a 3D source playing.
 - **Windows moves forward through three op banks and never goes back:** start chain ops `0x92C…`, CMSS on `0x4F1…`, CMSS off `0x55D…`. Each burst builds the next bank and clears the previous one, so the bursts aren't inverses. Replaying on after off left two chains live, far too loud. Writing the start state back on off muted the output, cause unknown. What works: off = Windows' burst, on = clear what only off writes, then Windows' on.
 - **The start must be cut after the music stream**, not the startup stream: CMSS on rewrites the mixer slots of the stream that is playing.
 - **Three parameter banks of 41, with the same destinations:** start `0x273…`, on `0x2EA…`, off `0x33B…`. Controls recorded in one bank must write the matching parameter in all three. A CMSS switch resets them, so the driver re-applies them.
 - **EAX slider:** params `0x13E…` follow it (-60 to +6 dB, `0xA8` = off); `0x36F…` follow it above 0 dB only. No effect on music.
+- **Game EAX through Creative's OpenAL** (traced in Windows, research only): each OpenAL source is a hardware voice on the card. Every new OpenAL context sets up its own reverb instance with a fresh parameter block further up in memory, and old blocks aren't reused. A room is a fixed list of parameter targets and filter coefficients, identical between runs once the block's position is taken into account. Generic only sets the 9 params `0x13E…` above. MacroFX and Elevation Filter wrote nothing to the card. Using this on Linux would need Creative's reverb setup replayed and audio routed into it as a hardware voice, so it isn't planned.
 - **Mic Environment:** wet `0x38E/0x38F` rises over steps 1–5, dry `0x367/0x36A` falls over steps 6–10. The first step links the mic into the effect.
 - **Bass with CMSS on** (tone in one channel at -12 dB): on its own channel, LFE reaches both ears at -15 dB, flat to 1 kHz, with CMSS on or off (see the next note for `hp71` now). Below about 200 Hz every other single channel goes to both ears at about -6 dB each. Bass in both front channels keeps its level (-18 dB in, -18 dB out). So positional bass sounds lighter, especially in a game that sends nothing on LFE.
 - **LFE folds into the fronts:** with CMSS on or off, LFE is added to front left and right at +5.5 dB relative to a front channel on Windows, so with CMSS on it takes the fronts' curve. It's unclear whether Windows or Creative's driver does this. Left on its own channel it skips CMSS and reaches both ears 8.5 dB lower. In `hp71` the driver folds it while copying into the loop. Measured on What U Hear with a 7.1 test file, the result is within about 0.4 dB of Windows. With CMSS on, FC is still about 2 dB lower than on Windows, mostly below 1 kHz.
 - **Stereo gets extra processing on Windows:** with CMSS on, stereo input gets ±47 Hz side frequencies (48000/1024), different left and right from identical input, and slow settling. Real 7.1 input doesn't, and the DSP gets no parameter writes during it. It only happens with CMSS on, so it's probably Creative's software, not Windows itself, but that isn't proven. Linux doesn't do this.
 - The Center/Subwoofer jack stayed silent in `game` and `hp71`.
+
+## Entertainment mode with headphones (tested, not included)
+
+- **Windows' speaker setting decides the stream format.** With Windows on 7.1, music reaches the card as 8 channels; on Stereo, as 2. The DSP layout differs between the two, so a firmware has to come from a session with the matching setting.
+- **CMSS-3D with headphones has one slider, Front to Surround** (Xpand and Stereo Surround only exist with 4.1 and up). It writes params `0x184/0x185` and `0x18C/0x18D` (0.44/0.9 of the first): 0 at Front, 0.9 at 50 % (default), 2.36 at Surround.
+- **Replayed on Linux, the slider makes no audible difference**, although its values reach the card. CMSS then sounds like Game mode's at every position. On Windows the slider spreads stereo music around you, so that part is most likely Creative's software on the CPU: with CMSS on, Windows adds ±47 Hz (48000/1024) sidebands to stereo input without writing to the card. Not proven, but it can't be replayed either way.
+- **EQ, Bass and Treble are one filter bank.** Windows computes one curve from all three and rewrites the whole bank on every move.
+- Everything else works as in `ent`: the same 4× setup, recording path, master volume, Crystalizer and Mic Monitor addresses. What U Hear rewires mixer entries and sets 8 gains, together with the next recording start.
 
 ## Recording
 
