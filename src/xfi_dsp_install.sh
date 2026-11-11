@@ -8,7 +8,8 @@
 #                                  in the background after boot, with a crash guard - if a start never finished (freeze),
 #                                  the next boot skips it (see the script; disable: sudo touch /etc/xfi-dsp-noautostart)
 #   - tray app                  -> /usr/local/bin/xfi-tray, started at login (~/.config/autostart/xfi-tray.desktop): the DSP's
-#                                  controls, and your settings restored after every boot
+#                                  controls, and your settings restored after every boot; its Stereo Upmix (hp71) =
+#                                  /usr/local/bin/xfi-upmix + /usr/local/share/xfi-dsp/xfi_upmix.conf
 #   - PipeWire output           -> card profile "X-Fi DSP" (ALSA device 6 through the DSP; the taskbar
 #                                  volume moves the DSP's master volume after the effects, as in Windows):
 #                                  ~/.local/share/xfi-dsp/xfi-dsp.conf (ACP profile set: X-Fi DSP + Analog Stereo)
@@ -53,9 +54,10 @@ FW=/lib/firmware/ctxfi/xfi20k1-dsp.bin
 CONF=/etc/modprobe.d/xfi-dsp.conf		# old autostart (winmode_autostart=1, before 2026-11-01) - removed
 SVC=/etc/systemd/system/xfi-dsp.service
 DEPMODC=/etc/depmod.d/xfi-dsp.conf
-DKMS_VER=2026.11.10.1
+DKMS_VER=2026.11.10.2
 AUTO=/usr/local/sbin/xfi-dsp-autostart
 TRAY=/usr/local/bin/xfi-tray
+UPMIX=/usr/local/bin/xfi-upmix		# tray's "Stereo Upmix" (hp71), filter in /usr/local/share/xfi-dsp
 PWC=$UHOME/.config/pipewire/pipewire.conf.d/xfi-dsp.conf	# old: a separate sink node (before 2026-10-30)
 PSET=$UHOME/.local/share/xfi-dsp/xfi-dsp.conf
 WPC=$UHOME/.config/wireplumber/wireplumber.conf.d/xfi-dsp.conf
@@ -172,6 +174,8 @@ install)
 	install -D -m 755 src/xfi-dsp-autostart.sh "$AUTO"
 	install -D -m 644 src/xfi-dsp.service "$SVC"
 	install -D -m 755 src/xfi_tray.py "$TRAY"
+	install -D -m 755 src/xfi_upmix.sh "$UPMIX"
+	install -D -m 644 src/xfi_upmix.conf /usr/local/share/xfi-dsp/xfi_upmix.conf
 	as_user mkdir -p "$(dirname "$TRAYDT")"
 	as_user cp src/xfi-tray.desktop "$TRAYDT"
 	python3 -c 'import PyQt6.QtWidgets' 2>/dev/null || echo "NOTE: PyQt6 is not installed, the tray app needs it (INSTALL.md, step 2)"
@@ -191,7 +195,8 @@ install)
 uninstall)
 	systemctl disable xfi-dsp.service 2>/dev/null || true
 	command -v dkms >/dev/null && dkms_remove
-	rm -f "$KDIR/snd-ctxfi.ko" "$FW" "$CONF" "$SVC" "$AUTO" "$DEPMODC" /etc/xfi-dsp-mode /etc/xfi-dsp-user "$TRAY" "$TRAYDT"
+	rm -f "$KDIR/snd-ctxfi.ko" "$FW" "$CONF" "$SVC" "$AUTO" "$DEPMODC" /etc/xfi-dsp-mode /etc/xfi-dsp-user "$TRAY" "$TRAYDT" "$UPMIX"
+	rm -rf /usr/local/share/xfi-dsp
 	rm -rf /var/lib/xfi-dsp
 	systemctl daemon-reload
 	depmod -a

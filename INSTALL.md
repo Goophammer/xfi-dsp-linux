@@ -14,7 +14,7 @@ Windows.
   That is a method of operating the hardware, not creative expression - see e.g. 17 U.S.C. § 102(b) (US) and
   Art. 6 of the EU Software Directive (interoperability). This is not legal advice.
 - Tested with one card (Sound Blaster X-Fi XtremeGamer **SB073x**, PCI `1102:0005`, subsystem `1102:0031`) in two systems:
-  - Nobara/Fedora 44, Linux **7.2.6** and **7.3.1**, PipeWire 1.6 + WirePlumber 0.5, card behind a PCIe-to-PCI bridge;
+  - Nobara/Fedora 44, Linux **7.2.6** and **7.3.1**, PipeWire 1.6 + WirePlumber 0.5, card in a StarTech PCIe-to-PCI adapter (PEX1PCI1);
   - Xubuntu (Ubuntu 26.04.1 LTS) Different PC, Linux **7.0.0**, card in a native PCI slot. 
   The scripts accept any 20K1 card (PCI `1102:0005`), but the DSP sequence was recorded on SB073x: other 20K1 models are untested.
   20K2 cards (Titanium) are not supported. Kernels older than 7.0 are untested and may not compile.
@@ -30,7 +30,7 @@ but it probably works with them just fine:
 |---|---|---|---|
 | Crystalizer + level, SVM | yes | yes | yes |
 | Taskbar volume, mic monitor, microphone recording | yes | yes | yes |
-| EQ | all 10 presets by name + level, plus Bass and Treble | 2 presets + level | all 10 presets by name + level, plus Bass and Treble |
+| EQ | 10 presets, your own 10-band EQ, Bass, Treble, level | 2 presets + level | 10 presets, your own 10-band EQ, Bass, Treble, level |
 | CMSS-3D | **yes**, headphone surround | - | - (no effect with 2/2.1 speakers, on Windows too) |
 | EAX, Mic Environment | yes, heard through Mic Monitor; mic recordings stay dry | - | - |
 | Recording source What U Hear | yes | - | yes |
@@ -206,8 +206,16 @@ sudo ./src/xfi_dsp_install.sh uninstall
 The permanent install starts a tray icon at login: red bars while the DSP runs, grey when it doesn't. Click it for a panel with tabs for the effects,
 the EQ and the microphone, and a Master Volume knob. It shows what the loaded mode has, and **restores your settings after every boot**, which the driver
 alone doesn't do. Master and Mic Level stay PipeWire's, which remembers them. Close the panel with its ✕ or Esc, move it by its title strip. It follows your
-desktop theme's colours; untick **Use system colors** in the tray icon's right-click menu for a dark blue look. To try it during a test:
-`python3 src/xfi_tray.py`.
+desktop theme's colours; untick **Use system colors** in the tray icon's right-click menu for a dark blue look. To try it during a
+test: `python3 src/xfi_tray.py`.
+
+**EQ tab** (`hp71`, `ent`): a preset or your own curve (**Custom**: move any of the 10 band sliders, 31 Hz to 16 kHz, ±12 dB),
+plus **Bass**, **Treble** (±12 dB) and the **EQ Level** (0 to −24 dB), all combinable as on Windows. Behind the band sliders
+the tray draws the curve the card really applies; Bass, Treble and the level pull it away from the sliders. Very sharp shapes
+can't be made by the EQ's wide bands, and the curve shows how close it gets. Big boosts distort on loud music (the tray
+warns above +12 dB): lower the EQ Level then. A plain preset with Bass and Treble at 0 is Creative's own recorded EQ; anything
+else is computed in the same format (within 0.3 dB of Creative's presets) and sent to the hidden control `DSP EQ Custom Bank`.
+
 
 ## PipeWire profiles
 
@@ -222,7 +230,7 @@ another kernel. The distro's analog surround and digital profiles are hidden, be
 | DSP Master | the volume (moved by the taskbar slider through PipeWire) |
 | DSP Crystalizer / DSP Crystalizer Level | Crystalizer on/off and intensity |
 | DSP SVM | Smart Volume Management |
-| DSP EQ Preset / DSP EQ Level | EQ (game: presets A/B are two of Creative's presets; hp71 and ent: all 10 by name). Each preset has its own level: picking a preset resets it and the slider stays where it was. hp71 and ent also list Bass -/+, Treble -/+ and Bass + Treble +: the ends of Windows' Bass and Treble sliders (from Entertainment mode; Windows' Game mode has none). They share the EQ's filters, so it's one choice at a time |
+| DSP EQ Preset / DSP EQ Level | EQ (game: presets A/B are two of Creative's presets; hp71 and ent: all 10 by name). Each preset has its own level: picking a preset resets it and the slider stays where it was. hp71 and ent also list Bass -/+, Treble -/+ and Bass + Treble +, the ends of Windows' Bass and Treble sliders, one at a time. The tray does better: your own 10-band EQ and Bass/Treble sliders on top of any preset (see Tray app) |
 | DSP CMSS-3D | hp71: headphone surround |
 | DSP EAX | hp71: EAX level, bottom = off. No effect on music; with Mic Environment it changes your voice in Mic Monitor, not in mic recordings |
 | DSP Mic Environment | hp71: sends the mic through EAX. Hear it with DSP Mic Monitor and DSP EAX on |

@@ -128,6 +128,9 @@ static struct {
  * -> an enumeration, or a slider (WM_SLIDER: value = state index, e.g. the steps of a Windows slider move).
  * Count word: bits 0-15 states, bits 16-30 the trace's start state (nothing written for it at load), bit 31 slider.
  * Created when Windows mode first comes up; their addresses belong to that firmware's layout.
+ * RAW control (slider flag + exactly 1 state): its state's writes list parameter-engine TARGET registers (0x154000..),
+ * and the control takes one value per register (a hidden multi-value ALSA control, iface CARD). Each value is written as
+ * target + current value with slope 0. The tray computes them (the EQ bank with Bass/Treble, analysis/eq/eqmath.py).
  */
 #define WM_SLIDER	0x80000000
 #define WM_MAX_STATES	512
@@ -135,6 +138,9 @@ static struct {
 #define WM_RESTORE	0x80000000	/* state op count flag: first write back the snapshot taken before the other state */
 #define WM_PARAM_LO	0x148000	/* parameter engine: not snapshotted (does not read back what was written) */
 #define WM_PARAM_HI	0x15C000
+#define WM_PT_LO	0x154000	/* parameter targets; slope = target + 0x4000, current value = target - 0x4000 */
+#define WM_PT_HI	0x158000
+#define WM_RAW_MAX	64
 
 struct wm_state_ops {
 	char label[16];
@@ -154,6 +160,9 @@ struct wm_ctl {
 	bool registered;
 	u32 *snap;			/* (addr, value) pairs read before applying a state, for a WM_RESTORE state */
 	u32 n_snap;
+	bool raw;			/* RAW control: values for the target registers of st[0] */
+	bool raw_set;			/* values given since the last EQ preset/level change: re-applied after a start */
+	u32 *raw_val;
 };
 
 static struct wm_ctl wm_ctls[WM_MAX_CTL];
@@ -289,6 +298,17 @@ static void wm_bass_step(struct wm_ctl *c)
 		;
 }
 
+static void wm_raw_apply(struct wm_ctl *c)
+{
+	for (u32 j = 0; j < c->st[0].n; j++) {
+		u32 a = c->st[0].ops[2 * j] & 0x0FFFFFFF;
+
+		wr(a, c->raw_val[j]);			/* target */
+		wr(a + 0x4000, 0);			/* slope: none, jump */
+		wr(a - 0x4000, c->raw_val[j]);		/* current value */
+	}
+}
+
 static void wm_ctl_apply(struct wm_ctl *c)
 {
 	struct wm_state_ops *st = &c->st[c->want];
@@ -347,8 +367,8 @@ static void wm_ctl_apply(struct wm_ctl *c)
 static void wm_apply_effects(void)
 {
 	for (unsigned int i = 0; i < wm_n_ctls; i++)
-		if (wm_ctls[i].want != wm_ctls[i].def)
-			wm_ctl_apply(&wm_ctls[i]);
+		if (wm_ctls[i].raw ? wm_ctls[i].raw_set : wm_ctls[i].want != wm_ctls[i].def)
+			wm_ctls[i].raw ? wm_raw_apply(&wm_ctls[i]) : wm_ctl_apply(&wm_ctls[i]);
 }
 
 /* ---- the sequence ------------------------------------------------------------------------------------------- */
@@ -815,6 +835,7 @@ void ct_winmode_free(struct kobject *kobj)
 			kfree(wm_ctls[i].st[k].ops);
 		kfree(wm_ctls[i].st);
 		kfree(wm_ctls[i].snap);
+		kfree(wm_ctls[i].raw_val);
 	}
 }
 
@@ -824,6 +845,13 @@ static int wm_ctl_info(struct snd_kcontrol *kc, struct snd_ctl_elem_info *ui)
 	struct wm_ctl *c = &wm_ctls[kc->private_value];
 	const char *names[WM_MAX_ENUM];
 
+	if (c->raw) {
+		ui->type = SNDRV_CTL_ELEM_TYPE_INTEGER;
+		ui->count = c->st[0].n;
+		ui->value.integer.min = S32_MIN;
+		ui->value.integer.max = S32_MAX;
+		return 0;
+	}
 	if (c->slider) {
 		ui->type = SNDRV_CTL_ELEM_TYPE_INTEGER;
 		ui->count = 1;
@@ -847,6 +875,11 @@ static int wm_ctl_get(struct snd_kcontrol *kc, struct snd_ctl_elem_value *uv)
 {
 	struct wm_ctl *c = &wm_ctls[kc->private_value];
 
+	if (c->raw) {
+		for (u32 j = 0; j < c->st[0].n; j++)
+			uv->value.integer.value[j] = (s32)c->raw_val[j];
+		return 0;
+	}
 	if (c->slider || (c->n_states == 2 && !strcmp(c->st[1].label, "on")))
 		uv->value.integer.value[0] = c->want;
 	else
@@ -861,17 +894,52 @@ static bool wm_follows_cmss(const struct wm_ctl *c)
 	return strstr(c->name, "CMSS") || strstr(c->name, "EAX") || strstr(c->name, "Environment");
 }
 
+static int wm_raw_put(struct wm_ctl *c, struct snd_ctl_elem_value *uv)
+{
+	bool changed = !c->raw_set;
+
+	for (u32 j = 0; j < c->st[0].n; j++) {
+		long v = uv->value.integer.value[j];
+
+		if (v < S32_MIN || v > S32_MAX)
+			return -EINVAL;
+		changed |= c->raw_val[j] != (u32)(s32)v;
+		c->raw_val[j] = (u32)(s32)v;
+	}
+	c->raw_set = true;
+	if (READ_ONCE(wm.state) == WM_RUNNING)
+		wm_raw_apply(c);
+	return changed;
+}
+
 static int wm_ctl_put(struct snd_kcontrol *kc, struct snd_ctl_elem_value *uv)
 {
 	struct wm_ctl *c = &wm_ctls[kc->private_value];
-	long iv = uv->value.integer.value[0];
+	long iv;
+
+	if (c->raw)
+		return wm_raw_put(c, uv);
+	iv = uv->value.integer.value[0];
 	unsigned int v = c->slider ? (iv < 0 ? c->n_states : iv) :
 			 (c->n_states == 2 && !strcmp(c->st[1].label, "on")) ? !!iv : uv->value.enumerated.item[0];
 
 	if (v >= c->n_states)
 		return -EINVAL;
-	if (v == c->want)
+	/* an EQ preset or level writes the bank again: a computed bank (RAW) must not come back after a restart. The same
+	 * preset chosen again while a computed bank is on puts the recorded one back (Bass/Treble back to 0) */
+	if (strstr(c->name, "DSP EQ")) {
+		bool raw_on = false;
+
+		for (unsigned int i = 0; i < wm_n_ctls; i++)
+			if (wm_ctls[i].raw) {
+				raw_on |= wm_ctls[i].raw_set;
+				wm_ctls[i].raw_set = false;
+			}
+		if (v == c->want && !raw_on)
+			return 0;
+	} else if (v == c->want) {
 		return 0;
+	}
 	c->want = v;
 	if (!c->slider && strstr(c->name, "Recording Source"))
 		WRITE_ONCE(wm_rec_stereo, strcmp(c->st[v].label, "Mic"));
@@ -908,6 +976,7 @@ static int wm_parse_controls(const u8 *d, size_t size, size_t off, u32 count)
 		c->slider = c->n_states & WM_SLIDER;
 		c->def = (c->n_states >> 16) & 0x7FFF;
 		c->n_states &= 0xFFFF;
+		c->raw = c->slider && c->n_states == 1;
 		if (!c->n_states || c->n_states > (c->slider ? WM_MAX_STATES : WM_MAX_ENUM) || c->def >= c->n_states)
 			return -EINVAL;
 		c->want = c->at = c->def;
@@ -933,6 +1002,23 @@ static int wm_parse_controls(const u8 *d, size_t size, size_t off, u32 count)
 			for (u32 j = 0; j < 2 * st->n; j++)
 				st->ops[j] = le32_to_cpu((__force __le32)st->ops[j]);
 			off += 8 * st->n;
+		}
+		if (c->raw) {
+			struct wm_state_ops *st = &c->st[0];
+
+			if (!st->n || st->n > WM_RAW_MAX)
+				return -EINVAL;
+			for (u32 j = 0; j < st->n; j++) {
+				u32 a = st->ops[2 * j] & 0x0FFFFFFF;
+
+				if ((st->ops[2 * j] >> 28) != OP_WRITE || a < WM_PT_LO || a >= WM_PT_HI || (a & 3))
+					return -EINVAL;		/* parameter targets only */
+			}
+			c->raw_val = kcalloc(st->n, sizeof(u32), GFP_KERNEL);
+			if (!c->raw_val)
+				return -ENOMEM;
+			for (u32 j = 0; j < st->n; j++)
+				c->raw_val[j] = st->ops[2 * j + 1];
 		}
 		wm_n_ctls = i + 1;
 		if (!strcmp(c->name, WM_MASTER_NAME) && c->slider) {
@@ -1029,7 +1115,7 @@ static void wm_register_controls(void)
 	for (unsigned int i = 0; i < wm_n_ctls; i++) {
 		struct wm_ctl *c = &wm_ctls[i];
 		struct snd_kcontrol_new kn = {
-			.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
+			.iface = c->raw ? SNDRV_CTL_ELEM_IFACE_CARD : SNDRV_CTL_ELEM_IFACE_MIXER,	/* RAW: not in alsamixer */
 			.name = c->name,
 			.info = wm_ctl_info,
 			.get = wm_ctl_get,

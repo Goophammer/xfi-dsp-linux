@@ -17,8 +17,8 @@ Your games and movies send up to 7.1 audio, the card turns it into surround for 
 | Crystalizer, with level slider | ✅ |
 | SVM (Smart Volume Management) | ✅ |
 | EQ: all 10 presets, with level slider | ✅ |
-| Bass and Treble, as extra entries in the EQ list (one choice at a time) | ✅ |
-| Configurable EQ | ❌ Not done |
+| Configurable 10-band EQ, with a live curve of what the card does | ✅ (tray) |
+| Bass and Treble sliders, on top of any preset or your own EQ, as on Windows | ✅ (tray) |
 | Bass Boost, with level slider (3 to 12 dB) | ✅ |
 | Bass Boost cutoff slider | ❌ Not added yet, stays at 100 Hz |
 | EAX on music or games | ➖ No effect, only audible through Mic Monitor, just like on Windows* |
@@ -38,7 +38,7 @@ Your games and movies send up to 7.1 audio, the card turns it into surround for 
 | Automatic rebuild after kernel updates (DKMS) | ✅ |
 | Tray app with all controls, restoring your settings after a reboot | ✅ |
 
-This table is for the default mode, `hp71` (Game Mode with headphones and 7.1 downmix). Two stereo modes, `game` (Game Mode with speakers) and `ent` (Entertainment Mode with speakers), are also included. They have fewer features and aren't my priority right now. `ent` has Crystalizer, SVM, all EQ presets plus Bass and Treble, Bass Boost, mic, Mic Monitor and What U Hear, but no CMSS-3D: with stereo speakers it has no effect, on Windows too.
+This table is for the default mode, `hp71` (Game Mode with headphones and 7.1 downmix). Two stereo modes, `game` (Game Mode with speakers) and `ent` (Entertainment Mode with speakers), are also included. They have fewer features and aren't my priority right now. `ent` has Crystalizer, SVM, the EQ with Bass and Treble, Bass Boost, mic, Mic Monitor and What U Hear, but no CMSS-3D: with stereo speakers it has no effect, on Windows too.
 
 Rear, side, center and subwoofer outputs (4.1 to 7.1) don't apply to headphone mode. They aren't supported yet, and would need to be added to `game` and `ent` modes.
 
@@ -49,7 +49,7 @@ Rear, side, center and subwoofer outputs (4.1 to 7.1) don't apply to headphone m
 | **Tested card** | Sound Blaster X-Fi XtremeGamer (SB073x), PCI `1102:0005`, subsystem `1102:0031` |
 | **Other 20K1 cards** | Untested. They may work, and the mic will probably stay silent |
 | **20K2 cards (Titanium)** | Not supported |
-| **Tested systems** | Nobara 44 (Linux 7.2 and 7.3), card in a PCIe-to-PCI adapter. Xubuntu 26.04 (Linux 7.0), a different PC with a native PCI slot. `hp71` was tested on Nobara only |
+| **Tested systems** | Nobara 44 (Linux 7.2 and 7.3), card in a StarTech PCIe-to-PCI adapter (PEX1PCI1). Xubuntu 26.04 (Linux 7.0), a different PC with a native PCI slot. `hp71` was tested on Nobara only |
 | **Tested games** | ARC Raiders (7.1)<br>Squad (7.1)<br>Star Wars Jedi: Survivor (7.1)<br>Star Wars Battlefront II 2017 (7.1)<br>CMSS-3D works as expected, with much improved positional audio, as long as the game's audio output isn't set to mono or stereo/headphones. Always select System Default or Speakers as the audio output in the game's settings |
 | **Kernels older than 7.0** | Untested, may not compile |
 | **Audio server** | PipeWire with WirePlumber |
