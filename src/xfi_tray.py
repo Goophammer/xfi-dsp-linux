@@ -30,7 +30,8 @@ UPMIX_CTL = 'Stereo Upmix'			# not a card control: xfi_upmix.sh (stereo -> 7.1 i
 SHOW_UPMIX = False		# hidden for now (2026-11-10): no switch, nothing restored; xfi_upmix.sh itself still works
 EQ_CTL = 'DSP EQ Preset'
 BANK_CTL = 'DSP EQ Custom Bank'			# hidden (iface CARD): the EQ bank computed here, for Bass/Treble
-TONE_ENTRIES = ('Bass -', 'Bass +', 'Treble -', 'Treble +', 'Bass + Treble +')	# old fixed entries, replaced by sliders
+TONE_ENTRIES = ('Bass -', 'Bass +', 'Treble -', 'Treble +', 'Bass + Treble +')	# old fixed entries (in firmwares of
+# 2026-11-09 only), replaced by the Bass/Treble sliders: a saved one is converted
 EQ_SETTINGS = 'EQ'				# settings.json: the EQ page (custom bands, Bass, Treble, level)
 NOT_SAVED = (LEVEL_CTL, MASTER_CTL)		# PipeWire remembers these
 PORTS = {'Mic': 'xfi-dsp-mic', 'What U Hear': 'xfi-dsp-wuh'}
@@ -797,9 +798,14 @@ class Panel(QWidget):
         """a saved old fixed entry (Bass +, Treble -, ...) becomes Off + the Bass/Treble sliders at that end"""
         eq = self.ctls.get(EQ_CTL)
         i = self.saved.get(EQ_CTL)
-        if BANK_CTL not in self.ctls or not eq or not isinstance(i, int) or not 0 <= i < len(eq['items']):
+        if BANK_CTL not in self.ctls or not eq or not isinstance(i, int) or i < 0:
             return
-        label = eq['items'][i]
+        if i < len(eq['items']):
+            label = eq['items'][i]
+        elif 11 <= i < 11 + len(TONE_ENTRIES):	# saved by 2026-11-09's firmware: Off, 10 presets, then the 5 entries
+            label = TONE_ENTRIES[i - 11]
+        else:
+            return
         if self.saved.pop('DSP EQ Level Playback Volume', None) is not None:
             save_settings(self.saved)		# the EQ page has its own level
         if label not in TONE_ENTRIES:

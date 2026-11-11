@@ -230,7 +230,7 @@ another kernel. The distro's analog surround and digital profiles are hidden, be
 | DSP Master | the volume (moved by the taskbar slider through PipeWire) |
 | DSP Crystalizer / DSP Crystalizer Level | Crystalizer on/off and intensity |
 | DSP SVM | Smart Volume Management |
-| DSP EQ Preset / DSP EQ Level | EQ (game: presets A/B are two of Creative's presets; hp71 and ent: all 10 by name). Each preset has its own level: picking a preset resets it and the slider stays where it was. hp71 and ent also list Bass -/+, Treble -/+ and Bass + Treble +, the ends of Windows' Bass and Treble sliders, one at a time. The tray does better: your own 10-band EQ and Bass/Treble sliders on top of any preset (see Tray app) |
+| DSP EQ Preset / DSP EQ Level | EQ (game: presets A/B are two of Creative's presets; hp71 and ent: all 10 by name). Each preset has its own level: picking a preset resets it and the slider stays where it was. Your own 10-band EQ and Bass/Treble sliders on top of any preset are in the tray (see Tray app) |
 | DSP CMSS-3D | hp71: headphone surround |
 | DSP EAX | hp71: EAX level, bottom = off. No effect on music; with Mic Environment it changes your voice in Mic Monitor, not in mic recordings |
 | DSP Mic Environment | hp71: sends the mic through EAX. Hear it with DSP Mic Monitor and DSP EAX on |
