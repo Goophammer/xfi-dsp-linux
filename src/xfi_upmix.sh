@@ -1,6 +1,6 @@
 #!/bin/bash
 # xfi_upmix.sh - "Stereo Envelopment" (tray: Effects, next to CMSS-3D; was "Stereo Upmix"): stereo upmixed to 7.1 (xfi_upmix.conf: center from L+R, rear/side from the L-R ambience,
-# delayed) into hp71's 7.1 input, so the card's CMSS-3D places it around you in the headphones, like Creative's "X-Fi CMSS-3D" enhancement
+# delayed) into gamehp's 7.1 input, so the card's CMSS-3D places it around you in the headphones, like Creative's "X-Fi CMSS-3D" enhancement
 # on Windows.
 #   ./xfi_upmix.sh on       create the output "X-Fi DSP (Stereo Envelopment)" and move the STEREO streams playing to it
 #   ./xfi_upmix.sh off      move them back to the plain X-Fi output (the upmix output stays, unused)
@@ -9,7 +9,7 @@
 #   ./xfi_upmix.sh status   on / off
 #   ./xfi_upmix.sh amount N how much: 0..200 % (100 = default; 0 = fronts only, the same as off), live, remembered
 #   ./xfi_upmix.sh amount   the current amount
-# Run as your normal user, with hp71 loaded (its sink has 8 channels). A reboot clears it; the tray switches it on again.
+# Run as your normal user, with gamehp loaded (its sink has 8 channels). A reboot clears it; the tray switches it on again.
 # Music apps that open 8 channels: XFI_UPMIX_APPS="elisa|strawberry" ./xfi_upmix.sh on   (default: elisa)
 set -u
 XFI=$(pactl list short sinks | awk '$2 ~ /\.xfi-dsp$/ {print $2; exit}')

@@ -8,7 +8,7 @@
 #                                  in the background after boot, with a crash guard - if a start never finished (freeze),
 #                                  the next boot skips it (see the script; disable: sudo touch /etc/xfi-dsp-noautostart)
 #   - tray app                  -> /usr/local/bin/xfi-tray, started at login (~/.config/autostart/xfi-tray.desktop): the DSP's
-#                                  controls, and your settings restored after every boot; its Stereo Envelopment (hp71) =
+#                                  controls, and your settings restored after every boot; its Stereo Envelopment (gamehp) =
 #                                  /usr/local/bin/xfi-upmix + /usr/local/share/xfi-dsp/xfi_upmix.conf
 #   - PipeWire output           -> card profile "X-Fi DSP" (ALSA device 6 through the DSP; the taskbar
 #                                  volume moves the DSP's master volume after the effects, as in Windows):
@@ -26,8 +26,9 @@
 #   sudo ./src/xfi_dsp_install.sh install-nodkms  driver for the running kernel only, survives reboots until a kernel update
 #   sudo ./src/xfi_dsp_install.sh install         DKMS if it is installed, otherwise like install-nodkms
 #                                                 (then reboot, or: sudo ./src/rearm.sh after the first install)
-#   Mode: sudo env XFI_MODE=hp71|game|ent ./src/xfi_dsp_install.sh install...   default hp71 = 7.1 input through CMSS-3D
-#   Headphone, PipeWire output 7.1; game = Game mode 2/2.1 speakers; ent = Entertainment mode 2/2.1 speakers
+#   Mode: sudo env XFI_MODE=gamehp|ent ./src/xfi_dsp_install.sh install...   default gamehp = Game mode, 7.1 input through
+#   CMSS-3D Headphone, PipeWire output 7.1; ent = Entertainment mode 2/2.1 speakers. (hp71 = gamehp's old name; the old
+#   stereo Game mode 'game' was dropped 2026-11-11: gamehp does everything it did)
 #   To try something without installing: ./src/xfi_test.sh
 #   Secure Boot (untested): the module is signed (DKMS does it, or src/xfi_secureboot.sh) and the key queued for
 #   enrollment; confirm it in the blue MOK Manager screen at the next boot. See src/xfi_secureboot.sh.
@@ -36,10 +37,12 @@
 #   ./src/xfi_dsp_install.sh pipewire-off       remove only the PipeWire part
 set -eu
 cd "$(dirname "$0")/.."
-MODE=${XFI_MODE:-hp71}
+MODE=${XFI_MODE:-gamehp}
 case $MODE in
-hp71|game|ent) ;;
-*) echo "unknown XFI_MODE '$MODE' - use hp71, game or ent"; exit 1 ;;
+gamehp|ent) ;;
+hp71) MODE=gamehp ;;		# its old name
+game) echo "the stereo Game mode 'game' was dropped: use gamehp (Game mode, everything 'game' had and more) or ent"; exit 1 ;;
+*) echo "unknown XFI_MODE '$MODE' - use gamehp or ent"; exit 1 ;;
 esac
 if [ "$(id -u)" = 0 ]; then
 	U=${SUDO_USER:-}
@@ -57,7 +60,7 @@ DEPMODC=/etc/depmod.d/xfi-dsp.conf
 DKMS_VER=2026.11.11.1
 AUTO=/usr/local/sbin/xfi-dsp-autostart
 TRAY=/usr/local/bin/xfi-tray
-UPMIX=/usr/local/bin/xfi-upmix		# tray's "Stereo Envelopment" (hp71), filter in /usr/local/share/xfi-dsp
+UPMIX=/usr/local/bin/xfi-upmix		# tray's "Stereo Envelopment" (gamehp), filter in /usr/local/share/xfi-dsp
 PWC=$UHOME/.config/pipewire/pipewire.conf.d/xfi-dsp.conf	# old: a separate sink node (before 2026-10-30)
 PSET=$UHOME/.local/share/xfi-dsp/xfi-dsp.conf
 WPC=$UHOME/.config/wireplumber/wireplumber.conf.d/xfi-dsp.conf
@@ -114,7 +117,7 @@ pw_install() {
 	as_user cp src/xfi-dsp-output.conf src/xfi-dsp-input.conf src/xfi-dsp-mic.conf src/xfi-dsp-wuh.conf "$(dirname "$PSET")/"
 	P=$(dirname "$PSET")
 	case $MODE in
-	hp71) OUT_MAP=front-left,front-right,front-center,lfe,rear-left,rear-right,side-left,side-right
+	gamehp) OUT_MAP=front-left,front-right,front-center,lfe,rear-left,rear-right,side-left,side-right
 	      IN_PATHS="$P/xfi-dsp-mic $P/xfi-dsp-wuh" ;;
 	ent) OUT_MAP=left,right; IN_PATHS="$P/xfi-dsp-mic $P/xfi-dsp-wuh" ;;	# ent has What U Hear too (2026-11-09)
 	*) OUT_MAP=left,right; IN_PATHS="$P/xfi-dsp-input" ;;

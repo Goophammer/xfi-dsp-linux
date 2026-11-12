@@ -2,21 +2,22 @@
 # xfi_test.sh - try the X-Fi DSP without installing it: the driver and firmware last until the next reboot, then your
 # normal setup is back. Run as your normal user (it asks for sudo). Stops PipeWire briefly and closes every program
 # using a sound device (see src/rearm.sh).
-#   ./src/xfi_test.sh                      load hp71 (7.1 + CMSS-3D Headphone)
-#   ./src/xfi_test.sh hp71|game|ent        load that mode, or switch to it
+#   ./src/xfi_test.sh                      load gamehp (Game mode, 7.1 + CMSS-3D Headphone)
+#   ./src/xfi_test.sh gamehp|ent           load that mode, or switch to it
 #   ./src/xfi_test.sh off                  remove what the test left behind (test firmware; PipeWire profile, or with a
 #                                          permanent install put that one's profile back), then reboot
 set -eu
 cd "$(dirname "$(readlink -f "$0")")/.."
 [ "$(id -u)" != 0 ] || { echo "run as your normal user, not with sudo"; exit 1; }
 TEST=/lib/firmware/ctxfi/xfi20k1-dsp-test.bin
-case "${1:-hp71}" in
-hp71|game|ent) M=${1:-hp71} ;;
+case "${1:-gamehp}" in
+gamehp|ent) M=${1:-gamehp} ;;
+hp71) M=gamehp ;;	# its old name
 off)
 	sudo rm -f "$TEST"
 	if [ -e /etc/systemd/system/xfi-dsp.service ]; then
 		# a test of another mode may have left its channel layout in the profile
-		XFI_MODE=$(cat /etc/xfi-dsp-mode 2>/dev/null || echo hp71) ./src/xfi_dsp_install.sh pipewire
+		XFI_MODE=$(cat /etc/xfi-dsp-mode 2>/dev/null || echo gamehp) ./src/xfi_dsp_install.sh pipewire
 		echo "test firmware removed; PipeWire profile set back to the installed mode"
 	else
 		./src/xfi_dsp_install.sh pipewire-off

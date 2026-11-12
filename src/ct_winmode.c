@@ -84,7 +84,7 @@ MODULE_PARM_DESC(winmode_spacing_us, "Windows mode: minimum time between firmwar
 /*
  * The firmware's OP_DELAYs are every pause of 200 us or more in the Windows trace (fw_blob.py): 7-11 s of a start.
  * Only the first ~470 ms matter, the chip and clock setup before the first transport buffer op (ops 0-35 in all three
- * modes). After that the DSP is synchronised by the handshake and mailbox waits. Tested on hp71 (2026-11-09): with
+ * modes). After that the DSP is synchronised by the handshake and mailbox waits. Tested on gamehp (2026-11-09): with
  * every later pause dropped the mailbox never answered (all 43 waits timed out, the load was unreliable), with only
  * the setup pauses kept all waits passed, the effects worked, and the DSP start went from 16 s to 3.8 s.
  * winmode_full_pauses=1 replays all of them, as before.
@@ -359,7 +359,7 @@ static bool wm_bass_step_once(struct wm_ctl *c)
 }
 
 /* the formula against the firmware's level states at the default cutoff: most sections within a few LSB (Windows' own
- * passes overlap a little: hp71's 3 dB state still has 4 sections of the step before) */
+ * passes overlap a little: gamehp's 3 dB state still has 4 sections of the step before) */
 static void wm_bass_check(struct wm_ctl *c)
 {
 	if (!c->slider || c->n_states != WM_BASS_LEVELS)
@@ -738,7 +738,7 @@ static int wm_thread(void *unused)
 	mutex_lock(&wm.lock);
 	wm.total = n;
 	wm.src = le32_to_cpu(p[4]) & 0xFFFF;
-	wm.channels = le32_to_cpu(p[4]) >> 16;		/* 8 (hp71), 4 (Ent 4.1 test), else stereo */
+	wm.channels = le32_to_cpu(p[4]) >> 16;		/* 8 (gamehp), 4 (Ent 4.1 test), else stereo */
 	if (wm.channels != 8 && wm.channels != 4)
 		wm.channels = 2;
 	wm.map_entry = le32_to_cpu(p[5]);

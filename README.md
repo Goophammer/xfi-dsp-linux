@@ -34,14 +34,16 @@ Your games and movies send up to 7.1 audio, the card turns it into surround for 
 | EAX reverb on your voice through Mic Monitor (mic recordings stay dry) | ✅ |
 | What U Hear (record everything you hear), selectable in your desktop's sound settings | ✅ |
 | Line-in or S/PDIF | ❌ Not done |
+| Subwoofer output | ❌ Not done |
+| 4.1/5.1/7.1 speaker output | ❌ Not done |
 | **System** | |
 | Sleep and resume | ✅ |
 | Automatic rebuild after kernel updates (DKMS) | ✅ |
 | Tray app with all controls, restoring your settings after a reboot | ✅ |
 
-This table is for the default mode, `hp71` (Game Mode with headphones and 7.1 downmix). Two stereo modes, `game` (Game Mode with speakers) and `ent` (Entertainment Mode with speakers), are also included. They have fewer features and aren't my priority right now. `ent` has Crystalizer, SVM, the EQ with Bass and Treble, Bass Boost, mic, Mic Monitor and What U Hear, but no CMSS-3D: with stereo speakers it has no effect, on Windows too.
+This table is for the default mode, `gamehp` (Game Mode with headphones and 7.1 downmix). A stereo mode, `ent` (Entertainment Mode with speakers), is also included. It has fewer features and isn't a priority right now. `ent` has Crystalizer, SVM, the EQ with Bass and Treble, Bass Boost, mic, Mic Monitor and What U Hear, but no CMSS-3D: with stereo speakers it has no effect, on Windows too.
 
-Rear, side, center and subwoofer outputs (4.1 to 7.1) don't apply to headphone mode. They aren't supported yet, and would need to be added to `game` and `ent` modes.
+Rear, side, center and subwoofer outputs (4.1 to 7.1) don't apply to headphone mode. They aren't supported yet, and would need speaker modes of their own.
 
 ## Compatibility
 
@@ -50,7 +52,7 @@ Rear, side, center and subwoofer outputs (4.1 to 7.1) don't apply to headphone m
 | **Tested card** | Sound Blaster X-Fi XtremeGamer (SB073x), PCI `1102:0005`, subsystem `1102:0031` |
 | **Other 20K1 cards** | Untested. They may work, and the mic will probably stay silent |
 | **20K2 cards (Titanium)** | Not supported |
-| **Tested systems** | Nobara 44 (Linux 7.2 and 7.3), card in a StarTech PCIe-to-PCI adapter (PEX1PCI1). Xubuntu 26.04 (Linux 7.0), a different PC with a native PCI slot. `hp71` was tested on Nobara only |
+| **Tested systems** | Nobara 44 (Linux 7.2 and 7.3), card in a StarTech PCIe-to-PCI adapter (PEX1PCI1). Xubuntu 26.04 (Linux 7.0), a different PC with a native PCI slot. `gamehp` was tested on Nobara only |
 | **Tested games** | ARC Raiders (7.1)<br>Squad (7.1)<br>Star Wars Jedi: Survivor (7.1)<br>Star Wars Battlefront II 2017 (7.1)<br>CMSS-3D works as expected, with much improved positional audio, as long as the game's audio output isn't set to mono or stereo/headphones. Always select System Default or Speakers as the audio output in the game's settings |
 | **Kernels older than 7.0** | Untested, may not compile |
 | **Audio server** | PipeWire with WirePlumber |
@@ -76,7 +78,7 @@ Full instructions are in **[INSTALL.md](INSTALL.md)**. In short:
    ```bash
    ./build.sh
    ```
-   This builds the default mode, `hp71`. For the stereo modes add their names, as in `./build.sh game ent`.
+   This builds the default mode, `gamehp`. For the stereo Entertainment mode add its name: `./build.sh ent`.
 5. Try it. This lasts until the next reboot, then your normal driver is back:
    ```bash
    ./src/xfi_test.sh
@@ -100,7 +102,7 @@ The recipes in this project hold those hardware register values, and refer to th
 
 - **Secure the card firmly in its slot.** A card that moves, for example when you plug into its jacks, can crash or freeze the whole PC.
 - **Check your game's audio setting.** CMSS-3D needs surround from the game, so use System Default, Surround, Speakers or Auto, not Stereo, Headphones or Mono.
-- **\*EAX does nothing on music or games in `hp71`, on Windows too.** In Game Mode, EAX is a reverb that games drive themselves: under Windows, a game with EAX support sends each sound into it through Creative's DirectSound3D or OpenAL drivers, and the EAX slider only sets how loud the reverb is. Music, and games without EAX support, play as one plain stream that never reaches the reverb. On Linux games have no way to use the card's EAX, but [DSOAL](https://github.com/kcat/dsoal) with OpenAL Soft recreates EAX in software for old DirectSound3D games, also under Wine and Proton, and OpenAL Soft itself does it for OpenAL games. The only thing wired into the card's reverb is your mic (Mic Environment), which is why you hear EAX through Mic Monitor.
+- **\*EAX does nothing on music or games in `gamehp`, on Windows too.** In Game Mode, EAX is a reverb that games drive themselves: under Windows, a game with EAX support sends each sound into it through Creative's DirectSound3D or OpenAL drivers, and the EAX slider only sets how loud the reverb is. Music, and games without EAX support, play as one plain stream that never reaches the reverb. On Linux games have no way to use the card's EAX, but [DSOAL](https://github.com/kcat/dsoal) with OpenAL Soft recreates EAX in software for old DirectSound3D games, also under Wine and Proton, and OpenAL Soft itself does it for OpenAL games. The only thing wired into the card's reverb is your mic (Mic Environment), which is why you hear EAX through Mic Monitor.
 - **Using several effects at once can cause clipping.** If it does, lower the volume.
 - **Bass Boost can clip** on music that already has a lot of bass. Lower the level or the volume.
 - With **What U Hear in voice chat,** other people hear everything you hear.

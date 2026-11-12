@@ -18,25 +18,24 @@ Windows.
   - Xubuntu (Ubuntu 26.04.1 LTS) Different PC, Linux **7.0.0**, card in a native PCI slot. 
   The scripts accept any 20K1 card (PCI `1102:0005`), but the DSP sequence was recorded on SB073x: other 20K1 models are untested.
   20K2 cards (Titanium) are not supported. Kernels older than 7.0 are untested and may not compile.
-- `game` and `ent` are built from Windows set to **2/2.1 speakers** (stereo + subwoofer). `hp71` takes **7.1 input** and
+- `ent` is built from Windows set to **2/2.1 speakers** (stereo + subwoofer). `gamehp` takes **7.1 input** and
   turns it into stereo for **headphones** with CMSS-3D Headphone; it was tested on the Nobara system only (Linux 7.3.1).
-  Surround output to real speakers (4.1/5.1/7.1 on the rear jacks) is not available yet, and neither is a subwoofer output: the Center/Subwoofer jack stayed silent in `game` `ent` and `hp71`. In `hp71` the LFE channel plays through the headphones.
+  Surround output to real speakers (4.1/5.1/7.1 on the rear jacks) is not available yet, and neither is a subwoofer output: the Center/Subwoofer jack stayed silent in every mode. In `gamehp` the LFE channel plays through the headphones.
 
-Three modes (each is a firmware; you pick one, switching later is one command). `hp71` is the default and has the most
-features; `game` and `ent` are less developed. `hp71` It was made for headphones, and speakers are untested so far,
-but it probably works with them just fine:
+Two modes, Creative's Game and Entertainment mode (each is a firmware; you pick one, switching later is one command).
+`gamehp` is the default and has the most features; `ent` is less developed. `gamehp` was made for headphones but works with speakers, no subwoofer output, LFE is folded into speakers.
 
-| | hp71 (Game, 7.1 + Headphones) | game (Game, 2/2.1) | ent (Entertainment, 2/2.1) |
-|---|---|---|---|
-| Crystalizer + level, SVM | yes | yes | yes |
-| Taskbar volume, mic monitor, microphone recording | yes | yes | yes |
-| EQ | 10 presets, your own 10-band EQ, Bass, Treble, level | 2 presets + level | 10 presets, your own 10-band EQ, Bass, Treble, level |
-| CMSS-3D | **yes**, headphone surround | - | - (no effect with 2/2.1 speakers, on Windows too) |
-| EAX, Mic Environment | yes, heard through Mic Monitor; mic recordings stay dry | - | - |
-| Recording source What U Hear | yes | - | yes |
-| Bass Boost | yes | - | on/off, at Windows' default level |
-| Input from apps | 7.1 (stereo apps stay left/right) | stereo | stereo |
-| Card's internal rate | 2x (96 kHz) | 2x (96 kHz) | 4x (192 kHz) |
+| | gamehp (Game, 7.1 + Headphones) | ent (Entertainment, 2/2.1) |
+|---|---|---|
+| Crystalizer + level, SVM | yes | yes |
+| Taskbar volume, mic monitor, microphone recording | yes | yes |
+| EQ | 10 presets, your own 10-band EQ, Bass, Treble, level | 10 presets, your own 10-band EQ, Bass, Treble, level |
+| CMSS-3D | **yes**, headphone surround | - (no effect with 2/2.1 speakers, on Windows too) |
+| EAX, Mic Environment | yes, heard through Mic Monitor; mic recordings stay dry | - |
+| Recording source What U Hear | yes | yes |
+| Bass Boost | yes | on/off, at Windows' default level |
+| Input from apps | 7.1 (stereo apps stay left/right) | stereo |
+| Card's internal rate | 2x (96 kHz) | 4x (192 kHz) |
 
 ---
 
@@ -95,9 +94,9 @@ In this folder, as your normal user:
 ./build.sh
 ```
 
-It checks the Creative files, builds the driver (`src/snd-ctxfi.ko`) and the `hp71` firmware
-(`firmware/xfi20k1-dsp-hp71.bin`). For the stereo modes, name them: `./build.sh game`, `./build.sh ent`, or
-`./build.sh all` for all three.
+It checks the Creative files, builds the driver (`src/snd-ctxfi.ko`) and the `gamehp` firmware
+(`firmware/xfi20k1-dsp-gamehp.bin`). For the stereo Entertainment mode add its name: `./build.sh ent`, or
+`./build.sh all` for both.
 
 Then pick one of the three ways to run it:
 
@@ -116,14 +115,14 @@ still holds a sound device open** (`fuser -k /dev/snd/*` - close music players, 
 unloads the X-Fi driver currently in use, resets the card, loads our driver and starts PipeWire again. Other sound
 cards are not touched, but programs using them may be closed too.
 
-This loads the default mode, `hp71`:
+This loads the default mode, `gamehp`:
 
 ```bash
 ./src/xfi_test.sh
 ```
 
-For another mode, or to switch later, name it: `./src/xfi_test.sh game` or `./src/xfi_test.sh ent`. Build its firmware
-first with `./build.sh game` or `./build.sh ent`.
+For the other mode, or to switch later, name it: `./src/xfi_test.sh ent` or `./src/xfi_test.sh gamehp`. Build its
+firmware first with `./build.sh ent`.
 
 It asks for your password and takes about 10 seconds. The output "X-Fi DSP" and the input "X-Fi DSP Mic" are
 then the defaults, and the taskbar volume works. Effects: `alsamixer -c XFi` (F6 to pick the card), or e.g.
@@ -143,8 +142,8 @@ After a kernel update `xfi_test.sh` rebuilds its own copy of the driver first. I
 ## 5. Install permanently
 
 Both options install the driver, the firmware, the PipeWire profile and an autostart service (`xfi-dsp.service`) that
-loads the DSP in the background after boot. These commands install the default mode, `hp71`. For another mode put
-`env XFI_MODE=game` (or `ent`) after `sudo`: `sudo env XFI_MODE=game ./src/xfi_dsp_install.sh install-dkms`. The install
+loads the DSP in the background after boot. These commands install the default mode, `gamehp`. For the other mode put
+`env XFI_MODE=ent` after `sudo`: `sudo env XFI_MODE=ent ./src/xfi_dsp_install.sh install-dkms`. The install
 builds that mode's firmware itself if `./build.sh` didn't.
 
 **Option B, without DKMS:** the driver is installed for the running kernel only.
@@ -209,7 +208,7 @@ alone doesn't do. Master and Mic Level stay PipeWire's, which remembers them. Cl
 desktop theme's colours; untick **Use system colors** in the tray icon's right-click menu for a dark blue look. To try it during a
 test: `python3 src/xfi_tray.py`.
 
-**EQ tab** (`hp71`, `ent`): a preset or your own curve (**Custom**: move any of the 10 band sliders, 31 Hz to 16 kHz, ±12 dB),
+**EQ tab** (`gamehp`, `ent`): a preset or your own curve (**Custom**: move any of the 10 band sliders, 31 Hz to 16 kHz, ±12 dB),
 plus **Bass**, **Treble** (±12 dB) and the **EQ Level** (0 to −24 dB), all combinable as on Windows. Behind the band sliders
 the tray draws the curve the card really applies; Bass, Treble and the level pull it away from the sliders. Very sharp shapes
 can't be made by the EQ's wide bands, and the curve shows how close it gets. Big boosts distort on loud music (the tray
@@ -230,12 +229,12 @@ another kernel. The distro's analog surround and digital profiles are hidden, be
 | DSP Master | the volume (moved by the taskbar slider through PipeWire) |
 | DSP Crystalizer / DSP Crystalizer Level | Crystalizer on/off and intensity |
 | DSP SVM | Smart Volume Management |
-| DSP EQ Preset / DSP EQ Level | EQ (game: presets A/B are two of Creative's presets; hp71 and ent: all 10 by name). Each preset has its own level: picking a preset resets it and the slider stays where it was. Your own 10-band EQ and Bass/Treble sliders on top of any preset are in the tray (see Tray app) |
-| DSP CMSS-3D | hp71: headphone surround |
-| DSP EAX | hp71: EAX level, bottom = off. No effect on music; with Mic Environment it changes your voice in Mic Monitor, not in mic recordings |
-| DSP Mic Environment | hp71: sends the mic through EAX. Hear it with DSP Mic Monitor and DSP EAX on |
-| DSP Bass Boost / DSP Bass Boost Level / DSP Bass Boost Cutoff | more bass. ent: on/off only, at Windows' default level. hp71: the level runs from 3 dB (0) to 12 dB (18) in 0.5 dB steps, 6 = Windows' default, and can clip at the top. The cutoff is in Hz, 10 to 200, 100 = Windows' default. What U Hear recordings don't include it |
-| DSP Recording Source | hp71 and ent: `Mic`, or `What U Hear` = everything you hear (music, games, the mic with its effects). The mic alone stays dry. Also selectable as the input's port in your desktop's sound settings |
+| DSP EQ Preset / DSP EQ Level | EQ (all 10 presets by name). Each preset has its own level: picking a preset resets it and the slider stays where it was. Your own 10-band EQ and Bass/Treble sliders on top of any preset are in the tray (see Tray app) |
+| DSP CMSS-3D | gamehp: headphone surround |
+| DSP EAX | gamehp: EAX level, bottom = off. No effect on music; with Mic Environment it changes your voice in Mic Monitor, not in mic recordings |
+| DSP Mic Environment | gamehp: sends the mic through EAX. Hear it with DSP Mic Monitor and DSP EAX on |
+| DSP Bass Boost / DSP Bass Boost Level / DSP Bass Boost Cutoff | more bass. ent: on/off only, at Windows' default level. gamehp: the level runs from 3 dB (0) to 12 dB (18) in 0.5 dB steps, 6 = Windows' default, and can clip at the top. The cutoff is in Hz, 10 to 200, 100 = Windows' default. What U Hear recordings don't include it |
+| DSP Recording Source | gamehp and ent: `Mic`, or `What U Hear` = everything you hear (music, games, the mic with its effects). The mic alone stays dry. Also selectable as the input's port in your desktop's sound settings |
 | DSP Mic Monitor | hear the microphone through the speakers |
 | DSP Auto Mute Speakers | SB073x: silences the rear jacks while headphones are in the front panel header. Off by default |
 | DSP Mic Capture Volume (Capture page, F4) | microphone recording level (top = Windows' 100) |
@@ -255,7 +254,7 @@ In `alsamixer` DSP Master jumps from 0 to 15: its range ends at -50 dB, which is
 - **What U Hear in voice chat:** the other people hear everything you hear, possibly their own voices too.
 - **X-Fi mic gone from the taskbar mixer?** PipeWire drops it if something opens the device directly (e.g. `arecord -D hw:...`)
   at the wrong moment. `./src/xfi_profile.sh` brings it back.
-- **hp71:** PipeWire shows a 7.1 output, also when you only have headphones - that's correct, CMSS-3D makes stereo from it.
+- **gamehp:** PipeWire shows a 7.1 output, also when you only have headphones - that's correct, CMSS-3D makes stereo from it.
   With CMSS-3D off you hear plain left/right.
 - **Sleep/suspend** works: the DSP reloads by itself a few seconds after waking up.
 - While the DSP runs, the analog/digital outputs of the normal Linux driver (the "Analog Stereo/Surround" profiles)
@@ -270,5 +269,5 @@ In `alsamixer` DSP Master jumps from 0 to 15: its range ends at -50 dB, which is
   ```bash
   sudo dmesg | grep -iE "ctxfi|windows mode|windows path|xfi"
   ```
-  plus `lspci -nnv -d 1102:` and which firmware (game/ent/hp71) you used.
+  plus `lspci -nnv -d 1102:` and which firmware (gamehp/ent) you used.
 - To stop the DSP right away: `sudo ./src/dsp_halt.sh`; to get your normal driver back: reboot.

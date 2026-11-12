@@ -14,7 +14,7 @@
  * winrec_loop_ch S32 channels: 2 (measured 2026-10-30: 96000 samples/s; the mic arrives as identical left/right);
  * winrec_left / winrec_right pick the two that become the stereo stream.
  *
- * In hp71 the mic is NOT identical left/right (2026-11-08, speech): the left channel is an exact copy 12 dB lower (coherence 1.00
+ * In gamehp the mic is NOT identical left/right (2026-11-08, speech): the left channel is an exact copy 12 dB lower (coherence 1.00
  * in every band) and doesn't follow the recording level (Mic Boost moves both); the right one follows it. What U Hear is balanced.
  * Where the left loses its level in the DSP's graph isn't known. The mic is mono, so while recording it (winrec_mono) the right
  * channel goes to both sides.

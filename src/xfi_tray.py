@@ -26,7 +26,7 @@ SOURCE_CTL = 'DSP Recording Source'
 LEVEL_CTL = 'DSP Mic Capture Volume'	# the mic's level, also PipeWire's input volume
 BOOST_CTL = 'DSP Mic Boost Capture Volume'	# the input chip's gain, in dB
 MASTER_CTL = 'DSP Master Playback Volume'	# the taskbar volume
-UPMIX_CTL = 'Stereo Upmix'			# not a card control: xfi_upmix.sh (stereo -> 7.1 in PipeWire, hp71 only); shown as
+UPMIX_CTL = 'Stereo Upmix'			# not a card control: xfi_upmix.sh (stereo -> 7.1 in PipeWire, gamehp only); shown as
 UPMIX_AMOUNT = 'Stereo Upmix Amount'		# "Stereo Envelopment" (the names stay: they're the saved settings' keys)
 SHOW_UPMIX = True		# False hides the switch (nothing restored then); xfi_upmix.sh works either way
 EQ_CTL = 'DSP EQ Preset'
@@ -188,7 +188,7 @@ def glass():
 
 # ---- EQ: Bass/Treble on top of a preset, computed in Creative's bank format (analysis/eq/eqmath.py, presets.py) ----
 # 10 bands (31 Hz low shelf, 62 Hz..8 kHz peaks, 16 kHz high shelf), each (a2, a1, b1, b2) normalized, 8.24 fixed point,
-# fs 48 kHz, all zero = band off, then the make-up level; hp71 adds its per-preset gain. Creative's own design, fitted to
+# fs 48 kHz, all zero = band off, then the make-up level; gamehp adds its per-preset gain. Creative's own design, fitted to
 # its recorded banks: proportional-Q peaks, shelves at 72 Hz / 8.8 kHz. Presets rebuilt this way are within 0.3 dB.
 EQ_FS = 48000
 EQ_CENTERS = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
@@ -234,7 +234,7 @@ def eq_band(k, g):
 
 def eq_bank(base, bass, treble, count, level_db=0.0, gain_2e4=0x1000000):
     """the values for BANK_CTL: 10 band gains + Bass + Treble (dB) -> 40 coefficients, the level (with the EQ Level, in
-    dB), and for hp71 its per-preset gain"""
+    dB), and for gamehp its per-preset gain"""
     fx = lambda x: int(round(x * 2 ** 24))
     vals, level = [], 10 ** (level_db / 20)
     for k in range(10):
@@ -346,7 +346,7 @@ def read_controls():
     ctls = {k: v for k, v in parse_contents(r.stdout).items() if k.startswith('DSP ')}
     # Master in PipeWire's percent, as the taskbar shows it: below the DSP's -50 dB PipeWire goes on in software
     (sink, ch), c = xfi_sink(channels=True), ctls.get(MASTER_CTL)
-    # Stereo Upmix: only when the X-Fi takes 8 channels in (hp71), where the card's CMSS-3D places the extra channels
+    # Stereo Upmix: only when the X-Fi takes 8 channels in (gamehp), where the card's CMSS-3D places the extra channels
     up = upmix_script() if SHOW_UPMIX else None
     if up and sink and ch == 8:
         r = run(up, 'status')
@@ -617,7 +617,7 @@ class EqBands(QWidget):
 
 
 class EqPage(QWidget):
-    """The EQ tab with a computed EQ (hp71, ent): preset or Custom, 10 band sliders, Bass, Treble, EQ Level. The band
+    """The EQ tab with a computed EQ (gamehp, ent): preset or Custom, 10 band sliders, Bass, Treble, EQ Level. The band
     sliders are TARGETS: where the curve goes at each band (a preset shows its real curve there; Custom is solved by
     eq_solve so the overlapping bands add up to them)"""
     def __init__(self, panel):

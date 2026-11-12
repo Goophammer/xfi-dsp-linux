@@ -35,6 +35,6 @@ while read -r name size sum; do
 	else
 		echo "  WRONG VERSION: $name (sha256 $got, need $sum)"; ok=0
 	fi
-done < <(grep '^#FILE' recipes/hp71/winmode_seq.txt | cut -d' ' -f2-)
+done < <(grep '^#FILE' recipes/gamehp/winmode_seq.txt | cut -d' ' -f2-)
 [ $ok = 1 ] && [ $n = 2 ] || { echo "This installer does not have the right files: use Creative's driver version 2.30.0012 (INSTALL.md, step 1)."; exit 1; }
 echo "Creative files ready (./build.sh uses them)."

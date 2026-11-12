@@ -1,8 +1,8 @@
 #!/bin/bash
 # build.sh - build the X-Fi DSP driver and firmware on THIS computer (no root needed).
-#   ./build.sh               driver (src/snd-ctxfi.ko) + the hp71 firmware (firmware/xfi20k1-dsp-hp71.bin)
-#   ./build.sh game ent      driver + the firmwares named (hp71, game, ent)
-#   ./build.sh all           driver + all three firmwares
+#   ./build.sh               driver (src/snd-ctxfi.ko) + the gamehp firmware (firmware/xfi20k1-dsp-gamehp.bin)
+#   ./build.sh ent           driver + the firmwares named (gamehp, ent)
+#   ./build.sh all           driver + both firmwares
 # Needs: Creative's installer or the two Creative driver files in creative/ (see INSTALL.md), python3, make, gcc, kernel headers.
 set -eu
 [ "$(id -u)" != 0 ] || { echo "run ./build.sh WITHOUT sudo (as root it leaves root-owned files in this folder)"; exit 1; }
@@ -10,12 +10,13 @@ cd "$(dirname "$(readlink -f "$0")")"
 MODES=()
 for a in "$@"; do
 	case "$a" in
-	hp71|game|ent) MODES+=("$a") ;;
-	all) MODES=(hp71 game ent) ;;
+	gamehp|ent) MODES+=("$a") ;;
+	hp71) MODES+=(gamehp) ;;	# its old name
+	all) MODES=(gamehp ent) ;;
 	*) sed -n '2,6p' "$0"; exit 1 ;;
 	esac
 done
-[ ${#MODES[@]} -gt 0 ] || MODES=(hp71)
+[ ${#MODES[@]} -gt 0 ] || MODES=(gamehp)
 need() { command -v "$1" >/dev/null || { echo "missing: $1 ($2)"; exit 1; }; }
 need python3 "install python3"
 need make "install make (package: make / build-essential)"
@@ -40,7 +41,7 @@ while read -r name size sum; do
 	if [ -z "$f" ]; then echo "  MISSING: creative/$name"; ok=0; continue; fi
 	got=$(sha256sum "$f" | cut -d' ' -f1)
 	if [ "$got" = "$sum" ]; then echo "  ok: $f"; else echo "  WRONG VERSION: $f (sha256 $got, need $sum, size $size)"; ok=0; fi
-done < <(grep '^#FILE' recipes/hp71/winmode_seq.txt | cut -d' ' -f2-)
+done < <(grep '^#FILE' recipes/gamehp/winmode_seq.txt | cut -d' ' -f2-)
 [ $ok = 1 ] || { echo "Put the right files into creative/ (INSTALL.md, step 1) and run ./build.sh again."; exit 1; }
 
 echo "== building the driver for kernel $(uname -r)"
