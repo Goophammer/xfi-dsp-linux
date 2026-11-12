@@ -26,5 +26,7 @@ void ct20k1_mic_select(struct hw *hw);
 void ct20k1_mic_boost(struct hw *hw, unsigned int db);
 void ct20k1_auto_mute(struct hw *hw, bool enabled);
 void ct20k1_rear_mute(struct hw *hw, bool mute);
+void ct20k1_dac_mute(struct hw *hw, unsigned int how);
+bool ct20k1_dac_muted(void);
 
 #endif /* CTHW20K1_H */

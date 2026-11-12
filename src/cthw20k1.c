@@ -1386,6 +1386,24 @@ static void i2c_write(struct hw *hw, u32 device, u32 addr, u32 data)
 
 /* DAC operations */
 
+/*
+ * Quiet init (SB073x, 2026-11-12): the DAC (CS4382) comes up powered down (mode register bit 0) with its volume at
+ * minimum and the rear jacks muted, and stays so until Windows mode is running (ct_winmode.c powers it up once, after
+ * the DSP start). Each power switch of the DAC pops slightly and the DSP start hisses through anything else, so the
+ * fewer switches the better; before this, boot and reset powered it up, the start down, and up again. Without a
+ * Windows-mode start ct_winmode.c unmutes it after a while.
+ */
+static bool winmode_quiet_init = true;
+module_param(winmode_quiet_init, bool, 0644);
+MODULE_PARM_DESC(winmode_quiet_init, "SB073x: keep the outputs muted from the card's init until the DSP runs (on)");
+static bool dac_muted;			/* defined with the codec helpers below */
+static u32 dac_mode1;
+
+static bool dac_quiet(struct hw *hw)
+{
+	return hw->model == CTSB073X && winmode_quiet_init;
+}
+
 static int hw_reset_dac(struct hw *hw)
 {
 	u32 i;
@@ -1411,7 +1429,7 @@ static int hw_reset_dac(struct hw *hw)
 		hw_write_20kx(hw, GPIO, gpioorg | 0x2);
 	}
 
-	i2c_write(hw, 0x00180080, 0x01, 0x80);
+	i2c_write(hw, 0x00180080, 0x01, dac_quiet(hw) ? 0x81 : 0x80);	/* quiet: stays powered down */
 	i2c_write(hw, 0x00180080, 0x02, 0x10);
 
 	i2c_lock(hw);
@@ -1468,6 +1486,17 @@ static int hw_dac_init(struct hw *hw, const struct dac_conf *info)
 	i2c_write(hw, 0x00180080, 0x09, data);
 	i2c_write(hw, 0x00180080, 0x0c, data);
 	i2c_write(hw, 0x00180080, 0x0f, data);
+
+	if (dac_quiet(hw)) {		/* volume down too; outputs stay muted until Windows mode runs */
+		static const u8 vol[] = { 0x07, 0x08, 0x0A, 0x0B, 0x0D, 0x0E, 0x10, 0x11 };
+
+		for (unsigned int i = 0; i < ARRAY_SIZE(vol); i++)
+			i2c_write(hw, 0x00180080, vol[i], 0xFF);
+		dac_mode1 = 0x80;
+		WRITE_ONCE(dac_muted, true);
+		i2c_lock(hw);
+		return 0;
+	}
 
 	i2c_lock(hw);
 
@@ -2135,7 +2164,30 @@ static void hw_write_20kx(struct hw *hw, u32 reg, u32 data)
  * the values hw_dac_init uses for msr 4); without that the DAC played noise (2026-10-30). Bounded polls, unlike
  * i2c_write: a dead card must not hang the caller. Returns 0 or -ETIMEDOUT / -EIO.
  */
+#define DAC_DEV		0x00180080
+#define DAC_MODE1	0x01		/* CS4382 Mode Control 1: bit 0 = power down (outputs held silent) */
+static u32 dac_mode1 = 0x80;		/* what hw_dac_init leaves; Entertainment mode writes 0xa0 */
+static bool dac_muted;
+
+bool ct20k1_dac_muted(void)
+{
+	return READ_ONCE(dac_muted);
+}
+
+static int codec_write_raw(struct hw *hw, u32 device, u32 reg, u32 data);
+
+/* while ct20k1_dac_mute() holds the DAC down, a write to its mode register is remembered and keeps the power-down bit */
 int ct20k1_codec_write(struct hw *hw, u32 device, u32 reg, u32 data)
+{
+	if (device == DAC_DEV && reg == DAC_MODE1) {
+		dac_mode1 = data;
+		if (READ_ONCE(dac_muted))
+			data |= 0x01;
+	}
+	return codec_write_raw(hw, device, reg, data);
+}
+
+static int codec_write_raw(struct hw *hw, u32 device, u32 reg, u32 data)
 {
 	int i;
 
@@ -2201,6 +2253,38 @@ void ct20k1_rear_mute(struct hw *hw, bool mute)
 	want = mute ? v & ~GPIO_REAR_ON : v | GPIO_REAR_ON;
 	if (want != v)
 		hw_write_20kx_raw(hw, GPIO, want);
+}
+
+/*
+ * Silence the DAC (SB073x: Cirrus CS4382 at I2C 0x18) around the Windows-mode start, every output including the front
+ * panel header, which the rear mute (GPIO bit 6) doesn't reach. Its 8 volume registers (two per channel pair, after each
+ * pair's mixing register 0x06/0x09/0x0C/0x0F that hw_dac_init writes; 0x00 = 0 dB, the reset value neither Windows nor
+ * Linux changes, 0xFF = full attenuation) took the pop at the end away, but not the hiss while the start reprograms the
+ * clocks (user, 2026-11-11). So also the power-down bit of the mode register: outputs held at rest whatever the clock.
+ */
+/* how: 0 = back on, 1 = volume down, 2 = volume down + power-down (each power switch pops slightly, the volume doesn't) */
+void ct20k1_dac_mute(struct hw *hw, unsigned int how)
+{
+	static const u8 vol[] = { 0x07, 0x08, 0x0A, 0x0B, 0x0D, 0x0E, 0x10, 0x11 };
+
+	if (hw->model != CTSB073X || hw_read_20kx(hw, GPIO) == 0xffffffff)
+		return;
+	if (how) {
+		for (unsigned int i = 0; i < ARRAY_SIZE(vol); i++)
+			codec_write_raw(hw, DAC_DEV, vol[i], 0xFF);
+		if (how >= 2) {
+			WRITE_ONCE(dac_muted, true);
+			codec_write_raw(hw, DAC_DEV, DAC_MODE1, dac_mode1 | 0x01);
+		}
+		return;
+	}
+	if (READ_ONCE(dac_muted)) {
+		WRITE_ONCE(dac_muted, false);
+		codec_write_raw(hw, DAC_DEV, DAC_MODE1, dac_mode1);
+		msleep(50);			/* let it power up before the volume returns */
+	}
+	for (unsigned int i = 0; i < ARRAY_SIZE(vol); i++)
+		codec_write_raw(hw, DAC_DEV, vol[i], 0x00);
 }
 
 void ct20k1_auto_mute(struct hw *hw, bool enabled)

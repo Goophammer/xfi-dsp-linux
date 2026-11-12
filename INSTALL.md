@@ -257,6 +257,7 @@ In `alsamixer` DSP Master jumps from 0 to 15: its range ends at -50 dB, which is
 - **gamehp:** PipeWire shows a 7.1 output, also when you only have headphones - that's correct, CMSS-3D makes stereo from it.
   With CMSS-3D off you hear plain left/right.
 - **Sleep/suspend** works: the DSP reloads by itself a few seconds after waking up.
+- **Quiet start:** the card stays muted from the driver's start until the DSP runs, so boot and wake-up don't hiss or pop. If you load the driver without starting the DSP, the outputs come back after 60 seconds.
 - While the DSP runs, the analog/digital outputs of the normal Linux driver (the "Analog Stereo/Surround" profiles)
   are silent - use the "X-Fi DSP" profile.
 

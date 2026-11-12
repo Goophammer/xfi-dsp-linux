@@ -82,6 +82,17 @@ module_param(winmode_spacing_us, uint, 0644);
 MODULE_PARM_DESC(winmode_spacing_us, "Windows mode: minimum time between firmware writes in microseconds (5)");
 
 /*
+ * SB073x: silence the DAC while the DSP starts, the front panel header too (the rear mute, GPIO bit 6, doesn't reach it).
+ * 2 (default): volume down + power-down. Volume alone (1) lets the start's hiss through (it reprograms the clocks), the
+ * power-down holds the outputs at rest; each power switch pops slightly, so the card also comes up powered down
+ * (winmode_quiet_init, cthw20k1.c) and powers up once, when the DSP runs (user 2026-11-12: "very slight pops, much like
+ * in Windows"). 0 = only the rear jacks, as before.
+ */
+static unsigned int winmode_dac_mute = 2;
+module_param(winmode_dac_mute, uint, 0644);
+MODULE_PARM_DESC(winmode_dac_mute, "Windows mode: mute the DAC while the DSP starts, front panel included (SB073x): 0 off, 1 volume, 2 volume + power-down");
+
+/*
  * The firmware's OP_DELAYs are every pause of 200 us or more in the Windows trace (fw_blob.py): 7-11 s of a start.
  * Only the first ~470 ms matter, the chip and clock setup before the first transport buffer op (ops 0-35 in all three
  * modes). After that the DSP is synchronised by the handshake and mailbox waits. Tested on gamehp (2026-11-09): with
@@ -187,6 +198,7 @@ static void wm_register_controls(void);
 /* "DSP Auto Mute Speakers": Windows polls the jacks about 3 times a second too. Off by default, as in Windows. */
 #define WM_JACK_MS	300
 #define WM_UNMUTE_MS	500	/* after 'running', before the rear jacks come back */
+#define WM_REAR_MUTE_MS	200	/* the rear jacks' mute (GPIO bit 6) takes ~100 ms to act (measured) */
 static bool wm_auto_mute, wm_auto_mute_added;
 static bool wm_rec_stereo;		/* "DSP Recording Source" on What U Hear */
 static unsigned int wm_mic_boost;	/* dB, "DSP Mic Boost": the ADC gain, 0 = Windows' start */
@@ -478,6 +490,15 @@ static void wm_ctl_apply(struct wm_ctl *c)
 	}
 }
 
+/* everything silent before the DSP stops: rear jacks (and wait for it to act), the DAC (front panel too) */
+static void wm_mute_outputs(void)
+{
+	ct20k1_rear_mute(wm.atc->hw, true);
+	msleep(WM_REAR_MUTE_MS);
+	if (winmode_dac_mute)
+		ct20k1_dac_mute(wm.atc->hw, min(winmode_dac_mute, 2u));
+}
+
 /* states the user chose before Windows mode came up (the start state = the trace, nothing to do) */
 static void wm_apply_effects(void)
 {
@@ -726,8 +747,13 @@ static int wm_thread(void *unused)
 		wm_fail(msg);
 		goto out;
 	}
-	/* the start crackles and blips on the outputs: keep the rear jacks silent until it has settled (SB073x only) */
+	/* the start crackles and blips on the outputs: keep the rear jacks silent until it has settled (SB073x only), and
+	 * with winmode_dac_mute the DAC itself, which also covers the front panel header */
 	ct20k1_rear_mute(wm.atc->hw, true);
+	if (winmode_dac_mute) {
+		msleep(WM_REAR_MUTE_MS);	/* the rear mute first, or the DAC's power-down reaches the speakers */
+		ct20k1_dac_mute(wm.atc->hw, min(winmode_dac_mute, 2u));
+	}
 	p = (const __le32 *)fw->data;
 	if (fw->size < 32 || le32_to_cpu(p[0]) != FW_MAGIC || le32_to_cpu(p[1]) != 2 ||
 	    fw->size < 32 + 8ULL * le32_to_cpu(p[2])) {
@@ -796,11 +822,14 @@ out_fw:
 	release_firmware(fw);
 	if (READ_ONCE(wm.state) == WM_RUNNING) {
 		msleep(WM_UNMUTE_MS);
+		ct20k1_dac_mute(wm.atc->hw, 0);
+		msleep(WM_REAR_MUTE_MS);	/* the DAC's power-up settles before the rear jacks come back */
 		ct20k1_auto_mute(wm.atc->hw, READ_ONCE(wm_auto_mute));	/* unmutes, unless headphones are in the front panel */
 		if (READ_ONCE(wm_auto_mute))
 			schedule_delayed_work(&wm_jack_work, 0);	/* only now, or it would unmute early */
 	} else {
-		ct20k1_rear_mute(wm.atc->hw, false);	/* failed or stopped: the normal driver needs its speakers */
+		ct20k1_dac_mute(wm.atc->hw, 0);	/* failed or stopped: the normal driver needs its outputs */
+		ct20k1_rear_mute(wm.atc->hw, false);
 	}
 out:
 	mutex_lock(&wm.lock);
@@ -861,6 +890,18 @@ static ssize_t winmode_store(struct kobject *k, struct kobj_attribute *a, const 
 
 static struct kobj_attribute winmode_attr = __ATTR(winmode, 0644, winmode_show, winmode_store);
 
+/* quiet init (cthw20k1.c): the card came up muted for the DSP start; if none comes, give the outputs back */
+#define WM_QUIET_MS	60000
+static void wm_quiet_fn(struct work_struct *work)
+{
+	if (!wm.atc || READ_ONCE(wm.state) != WM_IDLE || !ct20k1_dac_muted())
+		return;
+	dev_info(wm.atc->card->dev, "X-Fi Windows mode: not started - outputs unmuted\n");
+	ct20k1_dac_mute(wm.atc->hw, 0);
+	ct20k1_rear_mute(wm.atc->hw, false);
+}
+static DECLARE_DELAYED_WORK(wm_quiet_work, wm_quiet_fn);
+
 int ct_winmode_init(struct ct_atc *atc, struct kobject *kobj)
 {
 	int err;
@@ -869,6 +910,8 @@ int ct_winmode_init(struct ct_atc *atc, struct kobject *kobj)
 	mutex_init(&wm.lock);
 	wm.state = WM_IDLE;
 	err = sysfs_create_file(kobj, &winmode_attr.attr);
+	if (ct20k1_dac_muted())
+		schedule_delayed_work(&wm_quiet_work, msecs_to_jiffies(WM_QUIET_MS));
 	if (!err && winmode_autostart)
 		wm_start();		/* firmware is loaded first; on failure the card simply stays in normal mode */
 	return err;
@@ -899,9 +942,12 @@ void ct_winmode_suspend(void)
 	}
 	cancel_delayed_work_sync(&wm_jack_work);
 	cancel_delayed_work_sync(&wm_bass_work);
+	cancel_delayed_work_sync(&wm_quiet_work);
 	if (wm.state == WM_RUNNING || wm.state == WM_LOADING) {
-		if (!READ_ONCE(wm_gone))
+		if (!READ_ONCE(wm_gone)) {
+			wm_mute_outputs();	/* halting the DSP mid-stream crackles */
 			wm_halt_dsp();
+		}
 		wm_resume_pending = true;
 	}
 	ct20k1_set_freeze(false);
@@ -913,8 +959,13 @@ void ct_winmode_suspend(void)
 
 void ct_winmode_resume(void)
 {
-	if (!wm.atc || !wm_resume_pending)
+	if (!wm.atc)
 		return;
+	if (!wm_resume_pending) {	/* the DSP wasn't running: the re-initialised card came up muted (quiet init) */
+		if (ct20k1_dac_muted())
+			schedule_delayed_work(&wm_quiet_work, 0);
+		return;
+	}
 	wm_resume_pending = false;
 	WRITE_ONCE(wm_gone, false);	/* the card was re-initialised */
 	dev_info(wm.atc->card->dev, "X-Fi Windows mode: reloading after resume\n");
@@ -936,10 +987,12 @@ void ct_winmode_free(struct kobject *kobj)
 	}
 	cancel_delayed_work_sync(&wm_jack_work);
 	cancel_delayed_work_sync(&wm_bass_work);
-	if (wm.atc && wm.state == WM_RUNNING)
-		ct20k1_auto_mute(wm.atc->hw, false);
-	/* never leave Windows' DSP program running behind us: rearm's PCI reset does not stop the cores (2026-10-29) */
+	cancel_delayed_work_sync(&wm_quiet_work);
+	/* never leave Windows' DSP program running behind us: rearm's PCI reset does not stop the cores (2026-10-29). Muted
+	 * first: halting it mid-stream crackles. The next driver's start (or the card reset) brings the outputs back. */
 	if (wm.atc && wm.state != WM_IDLE) {
+		if (!READ_ONCE(wm_gone))
+			wm_mute_outputs();
 		wm_halt_dsp();
 		dev_info(wm.atc->card->dev, "X-Fi Windows mode: DSP halted on unload\n");
 	}
