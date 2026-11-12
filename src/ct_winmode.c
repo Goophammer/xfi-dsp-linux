@@ -25,6 +25,7 @@
 #include <linux/delay.h>
 #include <linux/firmware.h>
 #include <linux/kthread.h>
+#include <linux/math64.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/pci.h>
@@ -239,7 +240,68 @@ static bool wm_ctl_has_restore(struct wm_ctl *c)
 
 #define WM_BASS_SWITCH	"DSP Bass Boost Playback Switch"
 #define WM_BASS_LEVEL	"DSP Bass Boost Level Playback Volume"
+#define WM_BASS_CUTOFF	"DSP Bass Boost Cutoff Playback Volume"
 #define WM_STEP_MS	100		/* Windows moves Bass Boost one 0.5 dB pass at a time, this far apart */
+
+/*
+ * Bass Boost computed (analysis/bassboost/model.py, fit to two VM traces): each of the level's 14 identical sections is
+ * one biquad, the bilinear transform at 96 kHz of H(s) = s (s + k wp) / (s + wp)^2 with wp = 2 pi r fc, where k and r
+ * depend only on the level and the cutoff fc only scales frequency. Words (8.24) at section + 0/4/8/0x10/0x14:
+ * b1, b2, a1, a2, b0 over a0. Tables: k and r for the 19 levels 3..12 dB (Q32). Only used when the firmware's
+ * level states match the formula (wm_bass_check): then the cutoff control exists and every level step is computed.
+ */
+#define WM_BASS_LEVELS	19
+#define WM_BASS_FC_MIN	10
+#define WM_BASS_FC_MAX	200
+#define WM_BASS_FC_DEF	100		/* Windows' default, where 'on' leaves the card */
+#define WM_BASS_LO	0x198000	/* the sections' words */
+#define WM_BASS_HI	0x19C000
+#define WM_BASS_PI_FS	9211247073ULL	/* pi / 96000 in Q48 */
+static const u64 wm_bass_k[WM_BASS_LEVELS] = {
+	10702743077ULL, 11482530041ULL, 12311616542ULL, 13192514211ULL, 14127817003ULL, 15120200534ULL, 16172421111ULL,
+	17287314445ULL, 18467794015ULL, 19716849081ULL, 21037542316ULL, 22433007054ULL, 23906444118ULL, 25461118236ULL,
+	27100354012ULL, 28827531445ULL, 30646080992ULL, 32559478143ULL, 34571237526ULL };
+static const u64 wm_bass_r[WM_BASS_LEVELS] = {
+	3511585619ULL, 3575259959ULL, 3636572002ULL, 3695521749ULL, 3752109200ULL, 3806334354ULL, 3858197211ULL,
+	3907697772ULL, 3954836037ULL, 3999612005ULL, 4042025677ULL, 4082077052ULL, 4119766131ULL, 4155092914ULL,
+	4188057400ULL, 4218659589ULL, 4246899482ULL, 4272777079ULL, 4296292379ULL };
+static bool wm_bass_calc;		/* the firmware's level states match: compute, cutoff control available */
+static unsigned int wm_bass_fc_want = WM_BASS_FC_DEF, wm_bass_fc_at = WM_BASS_FC_DEF;
+
+static s32 wm_bass_div(s64 n, u64 a0)		/* round(n / a0) in 8.24 */
+{
+	u64 v = (mul_u64_u64_div_u64(n < 0 ? -(u64)n : (u64)n, 1ULL << 25, a0) + 1) >> 1;
+
+	return n < 0 ? -(s32)v : (s32)v;
+}
+
+static void wm_bass_words(unsigned int lvl, unsigned int fc, s32 w[5])
+{
+	const u64 one = 1ULL << 48;
+	u64 x = mul_u64_u64_shr(wm_bass_r[lvl] * fc, WM_BASS_PI_FS, 32);	/* wp / (2 fs), Q48 */
+	u64 x2 = mul_u64_u64_shr(x, x, 48);
+	u64 kx = mul_u64_u64_shr(wm_bass_k[lvl], x, 32);
+	u64 a0 = one + 2 * x + x2;
+	s64 n[5] = { -2 * (s64)one, (s64)one - (s64)kx, 2 * (s64)x2 - 2 * (s64)one, (s64)(one - 2 * x + x2),
+		     (s64)(one + kx) };
+
+	for (int i = 0; i < 5; i++)
+		w[i] = wm_bass_div(n[i], a0);
+}
+
+static int wm_bass_word(u32 a)		/* which word of a section an address is, -1: none */
+{
+	if (a < WM_BASS_LO || a >= WM_BASS_HI)
+		return -1;
+	switch (a & 0x1F) {
+	case 0x00: return 0;
+	case 0x04: return 1;
+	case 0x08: return 2;
+	case 0x10: return 3;
+	case 0x14: return 4;
+	}
+	return -1;
+}
 
 static struct wm_ctl *wm_find_ctl(const char *name)
 {
@@ -256,19 +318,71 @@ static struct wm_ctl *wm_find_ctl(const char *name)
  */
 static DEFINE_MUTEX(wm_bass_lock);
 
-static bool wm_bass_step_once(struct wm_ctl *c)	/* under wm_bass_lock; true: more steps to go */
+/* the level state 'at' at cutoff wm_bass_fc_at: the recorded writes, with the section words computed */
+static void wm_bass_write(struct wm_ctl *c)
+{
+	struct wm_state_ops *st = &c->st[c->at];
+	bool calc = wm_bass_calc && c->at < WM_BASS_LEVELS;
+	s32 w[5];
+
+	if (calc)
+		wm_bass_words(c->at, wm_bass_fc_at, w);
+	for (u32 k = 0; k < st->n; k++) {
+		u32 a = st->ops[2 * k] & 0x0FFFFFFF, v = st->ops[2 * k + 1];
+		int i = calc ? wm_bass_word(a) : -1;
+
+		if ((st->ops[2 * k] >> 28) != OP_WRITE)
+			continue;
+		wr(a, i < 0 ? v : (u32)w[i]);
+	}
+}
+
+/*
+ * One step towards the wanted level and cutoff: level one state, cutoff x1.2 or x0.8 (as Windows ramps a cutoff drag).
+ * Under wm_bass_lock; true: more steps to go.
+ */
+static bool wm_bass_step_once(struct wm_ctl *c)
 {
 	struct wm_ctl *sw = wm_find_ctl(WM_BASS_SWITCH);
-	struct wm_state_ops *st;
+	unsigned int fc = READ_ONCE(wm_bass_fc_want), at = wm_bass_fc_at;
 
-	if (!sw || !sw->want || c->at == c->want)
+	if (!sw || !sw->want || (c->at == c->want && at == fc))
 		return false;		/* off: the level waits for 'on' */
-	c->at += c->at < c->want ? 1 : -1;
-	st = &c->st[c->at];
-	for (u32 k = 0; k < st->n; k++)
-		if ((st->ops[2 * k] >> 28) == OP_WRITE)
-			wr(st->ops[2 * k] & 0x0FFFFFFF, st->ops[2 * k + 1]);
-	return c->at != c->want;
+	if (c->at != c->want)
+		c->at += c->at < c->want ? 1 : -1;
+	if (at < fc)
+		wm_bass_fc_at = min(at * 6 / 5, fc);
+	else if (at > fc)
+		wm_bass_fc_at = max(at * 4 / 5, fc);
+	wm_bass_write(c);
+	return c->at != c->want || wm_bass_fc_at != fc;
+}
+
+/* the formula against the firmware's level states at the default cutoff: most sections within a few LSB (Windows' own
+ * passes overlap a little: hp71's 3 dB state still has 4 sections of the step before) */
+static void wm_bass_check(struct wm_ctl *c)
+{
+	if (!c->slider || c->n_states != WM_BASS_LEVELS)
+		return;
+	for (u32 s = 0; s < c->n_states; s++) {
+		struct wm_state_ops *st = &c->st[s];
+		u32 good = 0, all = 0;
+		s32 w[5];
+
+		wm_bass_words(s, WM_BASS_FC_DEF, w);
+		for (u32 k = 0; k < st->n; k++) {
+			u32 a = st->ops[2 * k] & 0x0FFFFFFF;
+			int i = wm_bass_word(a);
+
+			if (i < 0)
+				continue;
+			all++;
+			good += abs((s32)st->ops[2 * k + 1] - w[i]) <= 16;
+		}
+		if (all < 5 || good * 3 < all * 2)
+			return;
+	}
+	wm_bass_calc = true;
 }
 
 static void wm_bass_fn(struct work_struct *work)
@@ -356,7 +470,8 @@ static void wm_ctl_apply(struct wm_ctl *c)
 		struct wm_ctl *l = wm_find_ctl(WM_BASS_LEVEL);
 
 		if (l) {
-			l->at = l->def;
+			l->at = l->def;		/* where Windows' 'on' leaves the card */
+			wm_bass_fc_at = WM_BASS_FC_DEF;
 			wm_bass_step(l);
 		}
 		mutex_unlock(&wm_bass_lock);
@@ -1021,6 +1136,8 @@ static int wm_parse_controls(const u8 *d, size_t size, size_t off, u32 count)
 				c->raw_val[j] = st->ops[2 * j + 1];
 		}
 		wm_n_ctls = i + 1;
+		if (!strcmp(c->name, WM_BASS_LEVEL))
+			wm_bass_check(c);
 		if (!strcmp(c->name, WM_MASTER_NAME) && c->slider) {
 			wm_master = i;
 			c->want = min(ct_winplay_master(), c->n_states - 1);	/* applied by wm_apply_effects */
@@ -1104,8 +1221,54 @@ static const struct snd_kcontrol_new wm_mic_boost_ctl = {
 };
 static bool wm_mic_boost_added;
 
+/* "DSP Bass Boost Cutoff": in Hz, computed (wm_bass_words); steps like a Windows drag while Bass Boost is on */
+static int wm_bass_cutoff_info(struct snd_kcontrol *kc, struct snd_ctl_elem_info *ui)
+{
+	ui->type = SNDRV_CTL_ELEM_TYPE_INTEGER;
+	ui->count = 1;
+	ui->value.integer.min = WM_BASS_FC_MIN;
+	ui->value.integer.max = WM_BASS_FC_MAX;
+	return 0;
+}
+
+static int wm_bass_cutoff_get(struct snd_kcontrol *kc, struct snd_ctl_elem_value *uv)
+{
+	uv->value.integer.value[0] = READ_ONCE(wm_bass_fc_want);
+	return 0;
+}
+
+static int wm_bass_cutoff_put(struct snd_kcontrol *kc, struct snd_ctl_elem_value *uv)
+{
+	long fc = uv->value.integer.value[0];
+	struct wm_ctl *l = wm_find_ctl(WM_BASS_LEVEL);
+
+	if (fc < WM_BASS_FC_MIN || fc > WM_BASS_FC_MAX)
+		return -EINVAL;
+	if (fc == READ_ONCE(wm_bass_fc_want))
+		return 0;
+	WRITE_ONCE(wm_bass_fc_want, fc);
+	if (l && READ_ONCE(wm.state) == WM_RUNNING) {
+		mutex_lock(&wm_bass_lock);
+		wm_bass_step(l);
+		mutex_unlock(&wm_bass_lock);
+	}
+	return 1;
+}
+
+static const struct snd_kcontrol_new wm_bass_cutoff_ctl = {
+	.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
+	.name = WM_BASS_CUTOFF,
+	.info = wm_bass_cutoff_info,
+	.get = wm_bass_cutoff_get,
+	.put = wm_bass_cutoff_put,
+};
+static bool wm_bass_cutoff_added;
+
 static void wm_register_controls(void)
 {
+	if (!wm_bass_cutoff_added && wm_bass_calc &&
+	    !snd_ctl_add(wm.atc->card, snd_ctl_new1(&wm_bass_cutoff_ctl, wm.atc)))
+		wm_bass_cutoff_added = true;
 	if (!wm_mic_boost_added && wm.atc->hw->model == CTSB073X &&
 	    !snd_ctl_add(wm.atc->card, snd_ctl_new1(&wm_mic_boost_ctl, wm.atc)))
 		wm_mic_boost_added = true;

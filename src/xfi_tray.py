@@ -26,8 +26,9 @@ SOURCE_CTL = 'DSP Recording Source'
 LEVEL_CTL = 'DSP Mic Capture Volume'	# the mic's level, also PipeWire's input volume
 BOOST_CTL = 'DSP Mic Boost Capture Volume'	# the input chip's gain, in dB
 MASTER_CTL = 'DSP Master Playback Volume'	# the taskbar volume
-UPMIX_CTL = 'Stereo Upmix'			# not a card control: xfi_upmix.sh (stereo -> 7.1 in PipeWire, hp71 only)
-SHOW_UPMIX = False		# hidden for now (2026-11-10): no switch, nothing restored; xfi_upmix.sh itself still works
+UPMIX_CTL = 'Stereo Upmix'			# not a card control: xfi_upmix.sh (stereo -> 7.1 in PipeWire, hp71 only); shown as
+UPMIX_AMOUNT = 'Stereo Upmix Amount'		# "Stereo Envelopment" (the names stay: they're the saved settings' keys)
+SHOW_UPMIX = True		# False hides the switch (nothing restored then); xfi_upmix.sh works either way
 EQ_CTL = 'DSP EQ Preset'
 BANK_CTL = 'DSP EQ Custom Bank'			# hidden (iface CARD): the EQ bank computed here, for Bass/Treble
 TONE_ENTRIES = ('Bass -', 'Bass +', 'Treble -', 'Treble +', 'Bass + Treble +')	# old fixed entries (in firmwares of
@@ -41,10 +42,11 @@ LAYOUT = [
     ('Master', MASTER_CTL, 'Master Volume', None),
     ('Output', 'DSP Auto Mute Speakers Playback Switch', 'Mute speakers when headphones are plugged in', None),
     ('Effects', 'DSP CMSS-3D Playback Switch', 'CMSS-3D', 'DSP CMSS-3D Level Playback Volume'),
-    ('Effects', UPMIX_CTL, 'Stereo Upmix', None),
+    ('Effects', UPMIX_CTL, 'Stereo Envelopment', UPMIX_AMOUNT),
     ('Effects', 'DSP Crystalizer Playback Switch', 'Crystalizer', 'DSP Crystalizer Level Playback Volume'),
     ('Effects', 'DSP SVM Playback Switch', 'SVM', None),
-    ('Effects', 'DSP Bass Boost Playback Switch', 'Bass Boost', 'DSP Bass Boost Level Playback Volume'),
+    ('Effects', 'DSP Bass Boost Playback Switch', 'Bass Boost', ('DSP Bass Boost Level Playback Volume',
+                                                                 'DSP Bass Boost Cutoff Playback Volume')),
     ('EQ', EQ_CTL, 'Preset', 'DSP EQ Level Playback Volume'),
     ('Microphone', LEVEL_CTL, 'Mic Level', None),
     ('Microphone', BOOST_CTL, 'Mic Boost', None),
@@ -53,6 +55,13 @@ LAYOUT = [
     ('Microphone', 'DSP Mic Environment Playback Volume', 'Mic FX', None),
 ]
 TABS = ['Effects', 'EQ', 'Microphone']
+BESIDE = {UPMIX_CTL: 'DSP CMSS-3D Playback Switch'}	# switches shown on the same row as another, to its right
+SUB_LABEL = {'DSP Bass Boost Cutoff Playback Volume': 'Cutoff', UPMIX_AMOUNT: 'Envelopment'}	# a control's sliders: 'Level' unless named here
+
+
+def subs(level):
+    """the sliders that belong to a LAYOUT control: none, one, or a tuple"""
+    return () if not level else (level,) if isinstance(level, str) else level
 
 # The X-Fi look: dark navy glass with glowing cyan edges (drawn by Qt, no images)
 STYLE = '''
@@ -310,6 +319,7 @@ def dsp_state():
 
 
 BASS_LEVEL = 'DSP Bass Boost Level Playback Volume'
+BASS_CUTOFF = 'DSP Bass Boost Cutoff Playback Volume'
 MONITOR_CTL = 'DSP Mic Monitor Playback Switch'
 # the reverb on the voice sits after Mic Monitor: these do nothing unless it's on, so they only show then
 MONITOR_ONLY = ('DSP EAX Playback Volume', 'DSP Mic Environment Playback Volume')
@@ -319,6 +329,10 @@ def value_text(name, v, c):
     """what a slider's position means: Bass Boost in dB (3 dB + 0.5 dB per step), Mic Boost in dB, the rest in % of its range"""
     if name == BASS_LEVEL:
         return f'{3 + v / 2:g} dB'
+    if name == BASS_CUTOFF:
+        return f'{v} Hz'
+    if name == UPMIX_AMOUNT:
+        return f'{v}%'
     if name == BOOST_CTL:
         return f'+{v} dB'
     span = c['max'] - c['min']
@@ -337,6 +351,9 @@ def read_controls():
     if up and sink and ch == 8:
         r = run(up, 'status')
         ctls[UPMIX_CTL] = {'type': 'BOOLEAN', 'value': bool(r and r.stdout.strip() == 'on'), 'min': 0, 'max': 0, 'items': []}
+        r = run(up, 'amount')
+        a = r.stdout.strip() if r and not r.returncode else ''
+        ctls[UPMIX_AMOUNT] = {'type': 'INTEGER', 'value': int(a) if a.isdigit() else 100, 'min': 0, 'max': 200, 'items': []}
     if sink and c:
         r = run('pactl', 'get-sink-volume', sink)
         m = re.search(r'(\d+)%', r.stdout) if r else None
@@ -426,10 +443,10 @@ def apply_eq(e):
 
 
 def write_control(name, value):
-    if name == UPMIX_CTL:
+    if name in (UPMIX_CTL, UPMIX_AMOUNT):
         up = upmix_script()
         if up:
-            run(up, 'on' if value else 'off')
+            run(up, *(('on' if value else 'off',) if name == UPMIX_CTL else ('amount', str(value))))
         return
     sink = xfi_sink() if name == MASTER_CTL else None
     if sink:
@@ -485,7 +502,7 @@ def save_settings(s):
 
 def restore(ctls, saved):
     """Your settings, in LAYOUT order, where the card differs."""
-    order = [n for _, c, _, l in LAYOUT for n in (c, l) if n]
+    order = [n for _, c, _, l in LAYOUT for n in (c, *subs(l))]
     for name in order:
         if name in saved and name in ctls and ctls[name]['value'] != saved[name]:
             write_control(name, saved[name])
@@ -924,7 +941,8 @@ class Panel(QWidget):
                 g.addWidget(t, 0, 0, 1, 2)
                 row = 1
                 for name, label, level in items:
-                    row = self.add_control(g, row, name, label, level)
+                    if BESIDE.get(name) not in [n for n, _, _ in items]:	# else its partner's row shows it
+                        row = self.add_control(g, row, name, label, level)
                 g.setRowStretch(row, 1)
             idx = self.stack.addWidget(page)
             b = QPushButton(tab)
@@ -1008,20 +1026,17 @@ class Panel(QWidget):
             return row + 1
         c = self.ctls[name]
         if c['type'] == 'BOOLEAN':
-            w = QCheckBox(label)
-            if name == UPMIX_CTL:
-                w.setToolTip('Spreads stereo music and videos to 7.1 (center from what both sides share, rear and side from\n'
-                             'what differs), so CMSS-3D can place it around you. Surround games keep their own 7.1.\n'
-                             'With CMSS-3D off it works as a stereo widener.')
-            w.toggled.connect(lambda val, n=name: self.change(n, val))
-            self.widgets[name] = w
-            g.addWidget(w, row, 0, 1, 2)
+            pair = [n for n, b in BESIDE.items() if b == name and n in self.ctls]
+            g.addWidget(self.switch(name, label), row, 0, 1, 1 if pair else 2)
+            for n in pair:
+                g.addWidget(self.switch(n, next(l for _, m, l, _ in LAYOUT if m == n)), row, 1)
             row += 1
-            if level in self.ctls:
-                self.labels[level] = QLabel('Level')
-                g.addWidget(self.labels[level], row, 0)
-                g.addWidget(self.slider(level, self.ctls[level]), row, 1)
-                row += 1
+            for lv in subs(level) + tuple(x for n in pair for _, m, _, l in LAYOUT if m == n for x in subs(l)):
+                if lv in self.ctls:
+                    self.labels[lv] = QLabel(SUB_LABEL.get(lv, 'Level'))
+                    g.addWidget(self.labels[lv], row, 0)
+                    g.addWidget(self.slider(lv, self.ctls[lv]), row, 1)
+                    row += 1
             return row
         if c['type'] == 'ENUMERATED':
             g.addWidget(QLabel(label), row, 0)
@@ -1044,6 +1059,17 @@ class Panel(QWidget):
         g.addWidget(self.labels[name], row, 0)
         g.addWidget(self.slider(name, c), row, 1)
         return row + 1
+
+    def switch(self, name, label):
+        w = QCheckBox(label)
+        if name == UPMIX_CTL:
+            w.setToolTip('Software, not the X-Fi: done on your PC in PipeWire, before the sound reaches the card (on Windows,\n'
+                         'Creative does this in software too). Spreads stereo music and videos to 7.1 (center from what both\n'
+                         'sides share, rear and side from what differs), so CMSS-3D can place it around you.\n'
+                         'Surround games keep their own 7.1. With CMSS-3D off it works as a stereo widener.')
+        w.toggled.connect(lambda val, n=name: self.change(n, val))
+        self.widgets[name] = w
+        return w
 
     def slider(self, name, c):
         """a slider with its value next to it"""
@@ -1094,15 +1120,16 @@ class Panel(QWidget):
             QTimer.singleShot(0, self.adjustSize)
         # a level whose effect is off still works (it applies when the effect comes on), but shows dimmed
         for _, sw, _, level in LAYOUT:
-            row, c = self.rows.get(level), self.ctls.get(sw)
-            if row is None or c is None or c['value'] is None:
+            c = self.ctls.get(sw)
+            if c is None or c['value'] is None:
                 continue
             on = c['items'][c['value']] != 'Off' if c['type'] == 'ENUMERATED' else bool(c['value'])
-            fx = row.graphicsEffect()
-            if fx is None:
-                fx = QGraphicsOpacityEffect(row)
-                row.setGraphicsEffect(fx)
-            fx.setOpacity(1.0 if on else 0.4)
+            for row in filter(None, (self.rows.get(lv) for lv in subs(level))):
+                fx = row.graphicsEffect()
+                if fx is None:
+                    fx = QGraphicsOpacityEffect(row)
+                    row.setGraphicsEffect(fx)
+                fx.setOpacity(1.0 if on else 0.4)
         src, lvl = self.ctls.get(SOURCE_CTL), self.widgets.get(LEVEL_CTL)
         if src and lvl:		# What U Hear has its own level: the taskbar slider, in software
             mic = src['items'][src['value']] == 'Mic'
@@ -1114,7 +1141,7 @@ class Panel(QWidget):
         self.debounce.start()
 
     def flush(self):
-        order = [n for _, c, _, l in LAYOUT for n in (c, l) if n]
+        order = [n for _, c, _, l in LAYOUT for n in (c, *subs(l))]
         for name in sorted(self.pending, key=lambda n: order.index(n) if n in order else 99):
             write_control(name, self.pending[name])
             if name not in NOT_SAVED:

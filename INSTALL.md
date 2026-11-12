@@ -234,7 +234,7 @@ another kernel. The distro's analog surround and digital profiles are hidden, be
 | DSP CMSS-3D | hp71: headphone surround |
 | DSP EAX | hp71: EAX level, bottom = off. No effect on music; with Mic Environment it changes your voice in Mic Monitor, not in mic recordings |
 | DSP Mic Environment | hp71: sends the mic through EAX. Hear it with DSP Mic Monitor and DSP EAX on |
-| DSP Bass Boost / DSP Bass Boost Level | more bass. ent: on/off only, at Windows' default level. hp71: the level runs from 3 dB (0) to 12 dB (18) in 0.5 dB steps, 6 = Windows' default, and can clip at the top. The cutoff stays at 100 Hz. What U Hear recordings don't include it |
+| DSP Bass Boost / DSP Bass Boost Level / DSP Bass Boost Cutoff | more bass. ent: on/off only, at Windows' default level. hp71: the level runs from 3 dB (0) to 12 dB (18) in 0.5 dB steps, 6 = Windows' default, and can clip at the top. The cutoff is in Hz, 10 to 200, 100 = Windows' default. What U Hear recordings don't include it |
 | DSP Recording Source | hp71 and ent: `Mic`, or `What U Hear` = everything you hear (music, games, the mic with its effects). The mic alone stays dry. Also selectable as the input's port in your desktop's sound settings |
 | DSP Mic Monitor | hear the microphone through the speakers |
 | DSP Auto Mute Speakers | SB073x: silences the rear jacks while headphones are in the front panel header. Off by default |

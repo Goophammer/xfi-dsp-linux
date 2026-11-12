@@ -1,12 +1,14 @@
 #!/bin/bash
-# xfi_upmix.sh - "Stereo Upmix" (tray: Effects): stereo upmixed to 7.1 (xfi_upmix.conf: center from L+R, rear/side from the L-R ambience,
+# xfi_upmix.sh - "Stereo Envelopment" (tray: Effects, next to CMSS-3D; was "Stereo Upmix"): stereo upmixed to 7.1 (xfi_upmix.conf: center from L+R, rear/side from the L-R ambience,
 # delayed) into hp71's 7.1 input, so the card's CMSS-3D places it around you in the headphones, like Creative's "X-Fi CMSS-3D" enhancement
 # on Windows.
-#   ./xfi_upmix.sh on       create the output "X-Fi DSP (stereo upmix)" and move the STEREO streams playing to it
+#   ./xfi_upmix.sh on       create the output "X-Fi DSP (Stereo Envelopment)" and move the STEREO streams playing to it
 #   ./xfi_upmix.sh off      move them back to the plain X-Fi output (the upmix output stays, unused)
 #   ./xfi_upmix.sh toggle   on <-> off
 #   ./xfi_upmix.sh remove   off, and remove the upmix output
 #   ./xfi_upmix.sh status   on / off
+#   ./xfi_upmix.sh amount N how much: 0..200 % (100 = default; 0 = fronts only, the same as off), live, remembered
+#   ./xfi_upmix.sh amount   the current amount
 # Run as your normal user, with hp71 loaded (its sink has 8 channels). A reboot clears it; the tray switches it on again.
 # Music apps that open 8 channels: XFI_UPMIX_APPS="elisa|strawberry" ./xfi_upmix.sh on   (default: elisa)
 set -u
@@ -26,7 +28,7 @@ create() {
 	pipewire -c "${XDG_RUNTIME_DIR:-/tmp}/xfi_upmix.conf" >/dev/null 2>"${XDG_RUNTIME_DIR:-/tmp}/xfi_upmix.log" &
 	echo $! > "${XDG_RUNTIME_DIR:-/tmp}/xfi_upmix.pid"
 	disown
-	for _ in $(seq 25); do have_up && return; sleep 0.2; done
+	for _ in $(seq 25); do have_up && { apply_amount; return; }; sleep 0.2; done
 	echo "could not create the upmix output (log: ${XDG_RUNTIME_DIR:-/tmp}/xfi_upmix.log)"; exit 1
 }
 
@@ -77,15 +79,32 @@ watch_stop() {
 	rm -f "$R/xfi_upmix.watch"
 }
 
+# The amount scales what the upmix adds: rear/side ambience (L-R)/2 x a (a = 0..2) and the center (L+R)/2 x min(a, 1),
+# so 0 % is the fronts alone = off. Set live on the filter's controls (no restart, no gap). Remembered in ~/.config.
+AMOUNT_FILE=${XDG_CONFIG_HOME:-$HOME/.config}/xfi-dsp/upmix_amount
+amount() { a=$(cat "$AMOUNT_FILE" 2>/dev/null); case "$a" in ''|*[!0-9]*) echo 100 ;; *) echo "$a" ;; esac; }
+apply_amount() {
+	id=$(pw-cli ls Node | awk '/^\tid /{id = $2 + 0} /node.name = "xfi_upmix"$/{print id; exit}')
+	[ -n "$id" ] || return 0
+	a=$(amount)
+	d=$(awk -v a="$a" 'BEGIN {printf "%.4f", a / 200}')
+	c=$(awk -v a="$a" 'BEGIN {printf "%.4f", (a > 100 ? 100 : a) / 200}')
+	pw-cli set-param "$id" Props "{ params = [ \"diff:Gain 1\" $d \"diff:Gain 2\" -$d \"center:Gain 1\" $c \"center:Gain 2\" $c ] }" >/dev/null 2>&1
+}
+
 state() {	# on = the upmix output exists and stereo goes to it
 	have_up && [ "$(cat "${XDG_RUNTIME_DIR:-/tmp}/xfi_upmix.state" 2>/dev/null)" = "$UP" ] && echo on || echo off
 }
 
 case "${1:-toggle}" in
 status)	state ;;
+amount)	if [ -z "${2:-}" ]; then amount; exit 0; fi
+	case "$2" in *[!0-9]*) echo "amount: 0..200"; exit 1 ;; esac
+	[ "$2" -le 200 ] || { echo "amount: 0..200"; exit 1; }
+	mkdir -p "$(dirname "$AMOUNT_FILE")"; echo "$2" > "$AMOUNT_FILE"; apply_amount ;;
 on)	create; pactl set-default-sink "$XFI"; move_stereo "$UP"; watch_start; echo "upmix ON: stereo streams -> 7.1 -> X-Fi (surround streams untouched)" ;;
 off)	watch_stop; move_stereo "$XFI"; echo "upmix OFF: stereo streams plain to the X-Fi" ;;
 toggle)	if [ "$(cat "${XDG_RUNTIME_DIR:-/tmp}/xfi_upmix.state" 2>/dev/null)" = "$UP" ]; then "$0" off; else "$0" on; fi ;;
 remove)	watch_stop; move_stereo "$XFI"; P=$(cat "${XDG_RUNTIME_DIR:-/tmp}/xfi_upmix.pid" 2>/dev/null); [ -n "$P" ] && kill "$P" 2>/dev/null; rm -f "${XDG_RUNTIME_DIR:-/tmp}/xfi_upmix.pid"; rm -f "${XDG_RUNTIME_DIR:-/tmp}/xfi_upmix.state"; echo "upmix output removed" ;;
-*)	sed -n '2,9p' "$0"; exit 1 ;;
+*)	sed -n '2,11p' "$0"; exit 1 ;;
 esac

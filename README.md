@@ -14,13 +14,14 @@ Your games and movies send up to 7.1 audio, the card turns it into surround for 
 |---|---|
 | **Effects** | |
 | CMSS-3D headphone surround for games, movies and music, up to 7.1 | ✅ |
+| Stereo Envelopment: stereo music spread around you, with amount slider (0 to 200%) | ✅ (tray, our own: Windows does it in software) |
 | Crystalizer, with level slider | ✅ |
 | SVM (Smart Volume Management) | ✅ |
 | EQ: all 10 presets, with level slider | ✅ |
 | Configurable 10-band EQ, with a live curve of what the card does | ✅ (tray) |
 | Bass and Treble sliders, on top of any preset or your own EQ, as on Windows | ✅ (tray) |
 | Bass Boost, with level slider (3 to 12 dB) | ✅ |
-| Bass Boost cutoff slider | ❌ Not added yet, stays at 100 Hz |
+| Bass Boost cutoff slider (10 to 200 Hz) | ✅ |
 | EAX on music or games | ➖ No effect, only audible through Mic Monitor, just like on Windows* |
 | **Output** | |
 | Stereo output on the green jack | ✅ |
