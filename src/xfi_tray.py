@@ -420,11 +420,14 @@ def eq_state(saved):
             'bass': int(e.get('bass', 0)), 'treble': int(e.get('treble', 0)), 'level': int(e.get('level', 100))}
 
 
+EQ_LEVEL_CTL = 'DSP EQ Level Playback Volume'	# the firmware's own level slider (alsamixer): kept at the page's level
+
+
 def eq_level_db(level):
-    return -24 + 0.24 * level		# Windows' EQ level: 0 to -24 dB below the preset's own level, even in dB
+    return (level - 100) * 0.2243	# the firmware slider's steps (Windows' sweep): 100 = the preset's own level, 0 = -22.4 dB
 
 
-def apply_eq(e):
+def apply_eq(e, force=False):
     """the card's EQ from the page's state: a plain preset at full level without Bass/Treble = Creative's recorded bank
     (choosing the preset again makes the driver write it); anything else = a computed bank"""
     r = run('amixer', '-c', CARD, 'contents')
@@ -433,13 +436,21 @@ def apply_eq(e):
     if not eq or not bank or eq['value'] is None:
         return
     preset = eq['items'][eq['value']]
+    send = lambda vals: run('amixer', '-q', '-c', CARD, 'cset', f'iface=CARD,name={BANK_CTL}', ','.join(str(v) for v in vals))
+    # alsamixer's EQ Level shows the page's level. The driver writes that slider's own level word (not the preset's)
+    # and forgets the computed bank, so it goes first and the bank or preset after it sets the real level
+    lv = ctls.get(EQ_LEVEL_CTL)
+    if lv and lv['value'] is not None and min(lv['value'], 100) != e['level']:
+        run('amixer', '-q', '-c', CARD, 'cset', f'name={EQ_LEVEL_CTL}', str(e['level']))
+        force = True
     if not e['custom'] and not e['bass'] and not e['treble'] and e['level'] >= 100:
+        if force:	# the driver only writes the same preset again over a computed bank: give it one
+            send(eq_bank(EQ_PRESET_GAINS.get(preset, [0.0] * 10), 0, 0, bank['count'], 0.0, HP71_GAIN_2E4.get(preset, 0x1000000)))
         run('amixer', '-q', '-c', CARD, 'cset', f'name={EQ_CTL}', str(eq['value']))
         return
     base = eq_solve([b / 2 for b in e['bands']]) if e['custom'] else EQ_PRESET_GAINS.get(preset, [0.0] * 10)
     g2e4 = 0x1000000 if e['custom'] else HP71_GAIN_2E4.get(preset, 0x1000000)
-    vals = eq_bank(base, e['bass'] / 2, e['treble'] / 2, bank['count'], eq_level_db(e['level']), g2e4)
-    run('amixer', '-q', '-c', CARD, 'cset', f'iface=CARD,name={BANK_CTL}', ','.join(str(v) for v in vals))
+    send(eq_bank(base, e['bass'] / 2, e['treble'] / 2, bank['count'], eq_level_db(e['level']), g2e4))
 
 
 def write_control(name, value):
@@ -685,6 +696,8 @@ class EqPage(QWidget):
         v.addStretch()
         self.timer = QTimer(self, singleShot=True, interval=150)
         self.timer.timeout.connect(self.push)
+        self.seen = panel.ctls[EQ_CTL]['value']	# the card's preset and EQ Level as this page last knew them
+        self.seen_level = (panel.ctls.get(EQ_LEVEL_CTL) or {}).get('value')
         self.show_state()
         self.setMinimumHeight(self.sizeHint().height())	# the window grows to fit it, nothing gets squeezed
 
@@ -738,6 +751,7 @@ class EqPage(QWidget):
             write_control(EQ_CTL, idx)		# the driver writes Creative's recorded preset
             self.panel.saved[EQ_CTL] = idx
             self.panel.ctls[EQ_CTL]['value'] = idx
+            self.seen = idx
         self.show_state()
         self.push()
 
@@ -758,6 +772,32 @@ class EqPage(QWidget):
         self.sliders[key][1].setText(self.text(key, x))
         self.draw()
         self.timer.start()
+
+    def follow_card(self):
+        """a preset or EQ Level chosen outside the tray (alsamixer): show it, like choosing it here. The driver has
+        written the plain preset or its own level word, so this page's EQ goes back on top"""
+        eq, lv = self.panel.ctls.get(EQ_CTL), self.panel.ctls.get(EQ_LEVEL_CTL)
+        if not eq or eq['value'] is None or self.timer.isActive():
+            return
+        v = lv['value'] if lv and lv['value'] is not None else self.seen_level
+        preset, level = eq['value'] != self.seen, v != self.seen_level
+        self.seen, self.seen_level = eq['value'], v
+        if level and min(v, 100) == self.e['level']:
+            level = False			# this page's own write, or alsamixer above 100 (left as it is)
+        if not preset and not level:
+            return
+        if preset:
+            self.e['custom'] = False
+            self.panel.saved[EQ_CTL] = eq['value']
+        if level:
+            self.e['level'] = min(v, 100)
+        self.show_state()
+        self.panel.saved[EQ_SETTINGS] = dict(self.e)
+        save_settings(self.panel.saved)
+        if self.e['custom'] or self.e['bass'] or self.e['treble'] or self.e['level'] < 100:
+            apply_eq(self.e)
+        elif level:
+            apply_eq(self.e, force=True)	# back at 100: the preset's own level again
 
     def push(self):
         self.panel.saved[EQ_SETTINGS] = dict(self.e)
@@ -888,6 +928,8 @@ class Panel(QWidget):
             self.layout_key = key
             self.build()
         self.show_values()
+        if BANK_CTL in self.ctls and getattr(self, 'eqpage', None) is not None:
+            self.eqpage.follow_card()
         self.status.setText(STATE_TEXT.get(self.state, 'The X-Fi DSP is not running'))
         self.status.setVisible(not self.ctls)
 
