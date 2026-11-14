@@ -57,7 +57,7 @@ FW=/lib/firmware/ctxfi/xfi20k1-dsp.bin
 CONF=/etc/modprobe.d/xfi-dsp.conf		# old autostart (winmode_autostart=1, before 2026-11-01) - removed
 SVC=/etc/systemd/system/xfi-dsp.service
 DEPMODC=/etc/depmod.d/xfi-dsp.conf
-DKMS_VER=2026.11.12.1
+DKMS_VER=2026.11.13.1
 AUTO=/usr/local/sbin/xfi-dsp-autostart
 TRAY=/usr/local/bin/xfi-tray
 UPMIX=/usr/local/bin/xfi-upmix		# tray's "Stereo Envelopment" (gamehp), filter in /usr/local/share/xfi-dsp

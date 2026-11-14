@@ -745,6 +745,8 @@ static int wm_thread(void *unused)
 	if (request_firmware(&fw, winmode_fw, &wm.atc->pci->dev)) {
 		snprintf(msg, sizeof(msg), "firmware %s not found (generate it with src/fw_blob.py)", winmode_fw);
 		wm_fail(msg);
+		ct20k1_dac_mute(wm.atc->hw, 0);	/* the DSP was never touched: give the normal driver its outputs now */
+		ct20k1_rear_mute(wm.atc->hw, false);
 		goto out;
 	}
 	/* the start crackles and blips on the outputs: keep the rear jacks silent until it has settled (SB073x only), and
@@ -878,18 +880,6 @@ static int wm_start(void)
 	return 0;
 }
 
-static ssize_t winmode_store(struct kobject *k, struct kobj_attribute *a, const char *buf, size_t count)
-{
-	int err;
-
-	if (!sysfs_streq(buf, "start"))
-		return -EINVAL;
-	err = wm_start();
-	return err ? err : count;
-}
-
-static struct kobj_attribute winmode_attr = __ATTR(winmode, 0644, winmode_show, winmode_store);
-
 /* quiet init (cthw20k1.c): the card came up muted for the DSP start; if none comes, give the outputs back */
 #define WM_QUIET_MS	60000
 static void wm_quiet_fn(struct work_struct *work)
@@ -901,6 +891,24 @@ static void wm_quiet_fn(struct work_struct *work)
 	ct20k1_rear_mute(wm.atc->hw, false);
 }
 static DECLARE_DELAYED_WORK(wm_quiet_work, wm_quiet_fn);
+
+static ssize_t winmode_store(struct kobject *k, struct kobj_attribute *a, const char *buf, size_t count)
+{
+	int err;
+
+	/* "normal": the DSP won't be started (xfi-dsp-autostart decided so) - unmute now, not after WM_QUIET_MS */
+	if (sysfs_streq(buf, "normal")) {
+		mod_delayed_work(system_wq, &wm_quiet_work, 0);
+		return count;
+	}
+	if (!sysfs_streq(buf, "start"))
+		return -EINVAL;
+	err = wm_start();
+	return err ? err : count;
+}
+
+static struct kobj_attribute winmode_attr = __ATTR(winmode, 0644, winmode_show, winmode_store);
+
 
 int ct_winmode_init(struct ct_atc *atc, struct kobject *kobj)
 {

@@ -20,14 +20,16 @@ pw_rescan() {
 	fi
 }
 
-[ -e /etc/xfi-dsp-noautostart ] && { log "autostart disabled (/etc/xfi-dsp-noautostart)"; exit 0; }
+for _ in $(seq 60); do [ -w "$W" ] && break; sleep 0.5; done
+[ -w "$W" ] || { log "$W not there - our snd-ctxfi is not loaded (distro driver, or no X-Fi 20K1)"; exit 0; }
+# not starting the DSP: the card came up muted for it (SB073x), "normal" unmutes now instead of after a minute
+[ -e /etc/xfi-dsp-noautostart ] && { log "autostart disabled (/etc/xfi-dsp-noautostart)"; echo normal > "$W"; exit 0; }
 if [ -e "$MARK" ]; then
 	log "the previous DSP start did not finish (freeze or reset during loading) - NOT starting it this boot."
 	log "retry: sudo rm $MARK, then reboot (or run src/winmode_start.sh from the driver folder); details: journalctl -b -1 -k"
+	echo normal > "$W"
 	exit 0
 fi
-for _ in $(seq 60); do [ -w "$W" ] && break; sleep 0.5; done
-[ -w "$W" ] || { log "$W not there - our snd-ctxfi is not loaded (distro driver, or no X-Fi 20K1)"; exit 0; }
 case "$(cat "$W")" in running*|loading*) log "already $(cat "$W")"; exit 0 ;; esac
 
 mkdir -p "$(dirname "$MARK")" && date > "$MARK" && sync
