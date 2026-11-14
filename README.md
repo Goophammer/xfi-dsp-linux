@@ -62,6 +62,7 @@ CMSS-3D works as expected, with much improved positional audio.
 - **Secure Boot:** the installer signs the driver and asks you to enroll its key once at the next boot. Untested so far, please report
 - **Nobara's Easy Anti-Cheat kernel** can't load this driver: it only accepts modules signed by Nobara. Same for any upcoming distros with EAC kernel.
 - **Immutable Linux Distros** are not supported
+- **20K2 cards** (X-Fi Titanium, Titanium HD and others, PCI `1102:000b`) are not supported
 
 ## You need your own Creative driver files
 
