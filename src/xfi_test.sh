@@ -3,7 +3,7 @@
 # normal setup is back. Run as your normal user (it asks for sudo). Stops PipeWire briefly and closes every program
 # using a sound device (see src/rearm.sh).
 #   ./src/xfi_test.sh                      load gamehp (Game mode, 7.1 + CMSS-3D Headphone)
-#   ./src/xfi_test.sh gamehp|ent           load that mode, or switch to it
+#   ./src/xfi_test.sh gamehp|ent|ent51     load that mode, or switch to it
 #   ./src/xfi_test.sh off                  remove what the test left behind (test firmware; PipeWire profile, or with a
 #                                          permanent install put that one's profile back), then reboot
 set -eu
@@ -11,7 +11,7 @@ cd "$(dirname "$(readlink -f "$0")")/.."
 [ "$(id -u)" != 0 ] || { echo "run as your normal user, not with sudo"; exit 1; }
 TEST=/lib/firmware/ctxfi/xfi20k1-dsp-test.bin
 case "${1:-gamehp}" in
-gamehp|ent) M=${1:-gamehp} ;;
+gamehp|ent|ent51) M=${1:-gamehp} ;;
 hp71) M=gamehp ;;	# its old name
 off)
 	sudo rm -f "$TEST"

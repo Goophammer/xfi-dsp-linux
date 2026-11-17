@@ -6,46 +6,45 @@ The normal Linux driver plays sound through the X-Fi but leaves its DSP unused. 
 
 > **Status: test release.** Developed and tested on one card, a Sound Blaster X-Fi XtremeGamer (SB073x). Reports from other cards are very welcome.
 
-## Feature status for Headphone Mode
+## Feature status
+
+Three modes: `gamehp` (default: Game Mode, headphones, up to 7.1), `ent` (stereo or 2.1 speakers) and `ent51` (5.1 speakers). Rows that name a mode apply only to it; the others apply to all three.
 
 | Feature | Status |
 |---|---|
 | **Effects** | |
-| CMSS-3D headphone surround for games, movies and music, up to 7.1 | ✅ |
-| Stereo Envelopment: stereo music spread around you, with amount slider (0 to 200%) | ✅ \* |
+| CMSS-3D headphone surround for games, movies and music, up to 7.1 (mode `gamehp`) | ✅ |
+| Stereo Envelopment: stereo music spread around you, with amount slider (0 to 200%) (mode `gamehp`) | ✅ \* |
 | Crystalizer, with level slider | ✅ |
 | SVM (Smart Volume Management) | ✅ |
 | EQ: all 10 presets, with level slider | ✅ |
 | Configurable 10-band EQ, with a live curve of what the card does | ✅ \*\* |
 | Bass and Treble sliders, on top of any preset or your own EQ, as on Windows | ✅ \*\* |
-| Bass Boost, with level slider (3 to 12 dB) | ✅ |
-| Bass Boost cutoff slider (10 to 200 Hz) | ✅ |
-| EAX on music or games | ➖ No effect, only audible through Mic Monitor, just like on Windows ([see EAX](#eax)) |
+| Bass Boost, with level slider (3 to 12 dB) (modes `gamehp`, `ent`) | ✅ |
+| Bass Boost cutoff slider (10 to 200 Hz) (modes `gamehp`, `ent`) | ✅ |
+| EAX on music or games (mode `gamehp`) | ➖ No effect ([see EAX](#eax)) |
 | **Output** | |
 | Stereo output on the green jack | ✅ |
 | Front panel header (your PC case's headphone and mic jacks) | ✅ |
 | Muting speakers when front panel headphones are plugged in (optional, off by default) | ✅ |
 | Taskbar volume, controlling the DSP | ✅ |
+| 5.1 speakers with subwoofer: Bass Redirection, crossover 10-200 Hz (mode `ent51`) | ✅ |
+| 4.1/7.1 speaker output | ❌ Not done |
 | **Recording** | |
-| Microphone recording and Mic Monitor | ✅ |
+| Microphone recording and Mic Monitor | ✅, except `ent51` (known bug) |
 | Mic Boost, up to +20 dB | ✅ |
-| EAX reverb on your voice through Mic Monitor (mic recordings stay dry) | ✅ |
-| What U Hear (record everything you hear), selectable in your desktop's sound settings | ✅ |
+| EAX reverb on your voice through Mic Monitor (mode `gamehp`) | ✅ |
+| What U Hear (record everything you hear) | ✅ |
 | Line-in or S/PDIF | ❌ Not done |
-| Subwoofer output | ❌ Not done |
-| 4.1/5.1/7.1 speaker output | ❌ Not done |
 | **System** | |
 | Sleep and resume | ✅ |
 | Automatic rebuild after kernel updates (DKMS) | ✅ |
 | Tray app with all controls, restoring your settings after a reboot | ✅ |
+| Switching between the modes in the tray app, without a reboot | ✅ |
 
 \* Software effect recreated in PipeWire. On Windows it's done in software too; the only exception is Windows XP, where it was done on the DSP. I might revisit this and rebuild the driver based on Windows XP driver.
 
 \*\* DSP effects, but available in the tray app only, hidden from alsamixer so it isn't cluttered with 12 more sliders.
-
-This table is for the default mode, `gamehp` (Game Mode with headphones and 7.1 downmix). A stereo mode, `ent` (Entertainment Mode with speakers), is also included. It has fewer features and isn't a priority right now.
-
-Rear, side, center and subwoofer outputs (4.1 to 7.1) don't apply to headphone mode. They aren't supported yet.
 
 ## Requirements
 
@@ -83,7 +82,6 @@ Full instructions are in **[INSTALL.md](INSTALL.md)**. The test in step 5 closes
    ```bash
    ./build.sh
    ```
-   For the `ent` mode instead: `./build.sh ent`.
 5. Try it. This lasts until the next reboot, then your normal driver is back:
    ```bash
    ./src/xfi_test.sh

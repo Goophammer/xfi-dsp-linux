@@ -18,24 +18,26 @@ Windows.
   - Xubuntu (Ubuntu 26.04.1 LTS) Different PC, Linux **7.0.0**, card in a native PCI slot. 
   The scripts accept any 20K1 card (PCI `1102:0005`), but the DSP sequence was recorded on SB073x: other 20K1 models are untested.
   20K2 cards (Titanium) are not supported. Kernels older than 7.0 are untested and may not compile.
-- `ent` is built from Windows set to **2/2.1 speakers** (stereo + subwoofer). `gamehp` takes **7.1 input** and
+- `ent` is built from Windows set to **2/2.1 speakers** (stereo + subwoofer). `ent51` is built from **5.1 speakers**:
+  front on the green jack, rear on gray, center and subwoofer on orange. `gamehp` takes **7.1 input** and
   turns it into stereo for **headphones** with CMSS-3D Headphone; it was tested on the Nobara system only (Linux 7.3.1).
-  Surround output to real speakers (4.1/5.1/7.1 on the rear jacks) is not available yet, and neither is a subwoofer output: the Center/Subwoofer jack stayed silent in every mode. In `gamehp` the LFE channel plays through the headphones.
+  4.1 and 7.1 speaker output is not available yet. In `gamehp` and `ent` the LFE channel plays through the front speakers.
 
-Two modes, Creative's Game and Entertainment mode (each is a firmware; you pick one, switching later is one command).
-`gamehp` is the default and has the most features; `ent` is less developed. `gamehp` was made for headphones but works with speakers, no subwoofer output, LFE is folded into speakers.
+Three modes from Creative's Game and Entertainment mode (each is a firmware; you pick one, switching later is one command).
+`gamehp` is the default and has the most features; `ent` is less developed; `ent51` is for 5.1 speakers. `gamehp` was made for headphones but works with speakers, no subwoofer output, LFE is folded into speakers.
 
-| | gamehp (Game, 7.1 + Headphones) | ent (Entertainment, 2/2.1) |
-|---|---|---|
-| Crystalizer + level, SVM | yes | yes |
-| Taskbar volume, mic monitor, microphone recording | yes | yes |
-| EQ | 10 presets, your own 10-band EQ, Bass, Treble, level | 10 presets, your own 10-band EQ, Bass, Treble, level |
-| CMSS-3D | **yes**, headphone surround | - (no effect with 2/2.1 speakers, on Windows too) |
-| EAX, Mic Environment | yes, heard through Mic Monitor; mic recordings stay dry | - |
-| Recording source What U Hear | yes | yes |
-| Bass Boost | yes | on/off, at Windows' default level |
-| Input from apps | 7.1 (stereo apps stay left/right) | stereo |
-| Card's internal rate | 2x (96 kHz) | 4x (192 kHz) |
+| | gamehp (Game, 7.1 + Headphones) | ent (Entertainment, 2/2.1) | ent51 (Entertainment, 5.1) |
+|---|---|---|---|
+| Crystalizer + level, SVM | yes | yes | yes |
+| Taskbar volume, mic monitor, microphone recording | yes | yes | yes, but the mic is silent on most starts (known bug); mic monitor on the center speaker |
+| EQ | 10 presets, your own 10-band EQ, Bass, Treble, level | same | same |
+| CMSS-3D | **yes**, headphone surround | - (no effect with 2/2.1 speakers, on Windows too) | - (on Windows it's done by Creative's software) |
+| EAX, Mic Environment | yes, heard through Mic Monitor; mic recordings stay dry | - | - |
+| Recording source What U Hear | yes | yes | yes |
+| Bass Boost | yes, level 3-12 dB, cutoff 10-200 Hz | same | - |
+| Subwoofer | - | - | Bass Redirection with crossover 10-200 Hz, +15 dB, level |
+| Input from apps | 7.1 (stereo apps stay left/right) | stereo | 5.1 (stereo apps stay front left/right) |
+| Card's internal rate | 2x (96 kHz) | 4x (192 kHz) | 4x (192 kHz) |
 
 ---
 
@@ -94,9 +96,8 @@ In this folder, as your normal user:
 ./build.sh
 ```
 
-It checks the Creative files, builds the driver (`src/snd-ctxfi.ko`) and the `gamehp` firmware
-(`firmware/xfi20k1-dsp-gamehp.bin`). For the stereo Entertainment mode add its name: `./build.sh ent`, or
-`./build.sh all` for both.
+It checks the Creative files, builds the driver (`src/snd-ctxfi.ko`) and the firmware of all three modes
+(`firmware/xfi20k1-dsp-gamehp.bin` etc.). Only one: name it, e.g. `./build.sh ent51`.
 
 Then pick one of the three ways to run it:
 
@@ -121,8 +122,8 @@ This loads the default mode, `gamehp`:
 ./src/xfi_test.sh
 ```
 
-For the other mode, or to switch later, name it: `./src/xfi_test.sh ent` or `./src/xfi_test.sh gamehp`. Build its
-firmware first with `./build.sh ent`.
+For another mode, or to switch later, name it: `./src/xfi_test.sh ent`, `./src/xfi_test.sh ent51` or
+`./src/xfi_test.sh gamehp`. Build its firmware first, e.g. `./build.sh ent51`.
 
 It asks for your password and takes about 10 seconds. The output "X-Fi DSP" and the input "X-Fi DSP Mic" are
 then the defaults, and the taskbar volume works. Effects: `alsamixer -c XFi` (F6 to pick the card), or e.g.
@@ -142,9 +143,9 @@ After a kernel update `xfi_test.sh` rebuilds its own copy of the driver first. I
 ## 5. Install permanently
 
 Both options install the driver, the firmware, the PipeWire profile and an autostart service (`xfi-dsp.service`) that
-loads the DSP in the background after boot. These commands install the default mode, `gamehp`. For the other mode put
-`env XFI_MODE=ent` after `sudo`: `sudo env XFI_MODE=ent ./src/xfi_dsp_install.sh install-dkms`. The install
-builds that mode's firmware itself if `./build.sh` didn't.
+loads the DSP in the background after boot. These commands start in the default mode, `gamehp`. To start in another, put
+`env XFI_MODE=ent` or `env XFI_MODE=ent51` after `sudo`: `sudo env XFI_MODE=ent51 ./src/xfi_dsp_install.sh install-dkms`.
+All three modes are installed; switch later in the tray app. The install builds the firmwares itself if `./build.sh` didn't.
 
 **Option B, without DKMS:** the driver is installed for the running kernel only.
 ```bash
@@ -205,7 +206,10 @@ sudo ./src/xfi_dsp_install.sh uninstall
 The permanent install starts a tray icon at login: red bars while the DSP runs, grey when it doesn't. Click it for a panel with tabs for the effects,
 the EQ and the microphone, and a Master Volume knob. It shows what the loaded mode has, and **restores your settings after every boot**, which the driver
 alone doesn't do. Master and Mic Level stay PipeWire's, which remembers them. Close the panel with its ✕ or Esc, move it by its title strip. It follows your
-desktop theme's colours; untick **Use system colors** in the tray icon's right-click menu for a dark blue look. To try it during a
+desktop theme's colours; untick **Use system colors** in the tray icon's right-click menu for a dark blue look.
+**Mode** in the panel's status box (or in the same menu) switches between `gamehp`, `ent` and `ent51` without a reboot (about
+10 seconds of silence, the panel stays greyed out meanwhile); the next boot starts that mode too. Each mode keeps its own settings. The switch needs root: a polkit rule from the install
+(`/etc/polkit-1/rules.d/49-xfi-dsp.rules`) allows it for your user without a password. To try it during a
 test: `python3 src/xfi_tray.py`.
 
 **EQ tab** (`gamehp`, `ent`): a preset or your own curve (**Custom**: move any of the 10 band sliders, 31 Hz to 16 kHz, ±12 dB),
@@ -233,7 +237,7 @@ another kernel. The distro's analog surround and digital profiles are hidden, be
 | DSP CMSS-3D | gamehp: headphone surround |
 | DSP EAX | gamehp: EAX level, bottom = off. No effect on music; with Mic Environment it changes your voice in Mic Monitor, not in mic recordings |
 | DSP Mic Environment | gamehp: sends the mic through EAX. Hear it with DSP Mic Monitor and DSP EAX on |
-| DSP Bass Boost / DSP Bass Boost Level / DSP Bass Boost Cutoff | more bass. ent: on/off only, at Windows' default level. gamehp: the level runs from 3 dB (0) to 12 dB (18) in 0.5 dB steps, 6 = Windows' default, and can clip at the top. The cutoff is in Hz, 10 to 200, 100 = Windows' default. What U Hear recordings don't include it |
+| DSP Bass Boost / DSP Bass Boost Level / DSP Bass Boost Cutoff | more bass (gamehp, ent). The level runs from 3 dB (0) to 12 dB (18) in 0.5 dB steps, 6 = Windows' default, and can clip at the top. The cutoff is in Hz, 10 to 200, 100 = Windows' default. What U Hear recordings don't include it |
 | DSP Recording Source | gamehp and ent: `Mic`, or `What U Hear` = everything you hear (music, games, the mic with its effects). The mic alone stays dry. Also selectable as the input's port in your desktop's sound settings |
 | DSP Mic Monitor | hear the microphone through the speakers |
 | DSP Auto Mute Speakers | SB073x: silences the rear jacks while headphones are in the front panel header. Off by default |

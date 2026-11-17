@@ -1,0 +1,9 @@
+// 49-xfi-dsp.rules - installed by xfi_dsp_install.sh: lets @USER@, logged in at this computer, switch the X-Fi DSP's
+// mode from the tray (pkexec xfi-dsp-mode) without a password. Only that program, nothing else.
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.policykit.exec" &&
+        action.lookup("program") == "@PROGRAM@" &&
+        subject.user == "@USER@" && subject.local && subject.active) {
+        return polkit.Result.YES;
+    }
+});

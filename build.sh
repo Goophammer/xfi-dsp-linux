@@ -1,8 +1,8 @@
 #!/bin/bash
 # build.sh - build the X-Fi DSP driver and firmware on THIS computer (no root needed).
-#   ./build.sh               driver (src/snd-ctxfi.ko) + the gamehp firmware (firmware/xfi20k1-dsp-gamehp.bin)
-#   ./build.sh ent           driver + the firmwares named (gamehp, ent)
-#   ./build.sh all           driver + both firmwares
+#   ./build.sh               driver (src/snd-ctxfi.ko) + every mode's firmware (firmware/xfi20k1-dsp-<mode>.bin):
+#                            gamehp, ent and ent51 - the tray app switches between them
+#   ./build.sh ent51         driver + only the firmwares named (gamehp, ent, ent51)
 # Needs: Creative's installer or the two Creative driver files in creative/ (see INSTALL.md), python3, make, gcc, kernel headers.
 set -eu
 [ "$(id -u)" != 0 ] || { echo "run ./build.sh WITHOUT sudo (as root it leaves root-owned files in this folder)"; exit 1; }
@@ -10,13 +10,13 @@ cd "$(dirname "$(readlink -f "$0")")"
 MODES=()
 for a in "$@"; do
 	case "$a" in
-	gamehp|ent) MODES+=("$a") ;;
+	gamehp|ent|ent51) MODES+=("$a") ;;
 	hp71) MODES+=(gamehp) ;;	# its old name
-	all) MODES=(gamehp ent) ;;
+	all) MODES=(gamehp ent ent51) ;;	# the default anyway
 	*) sed -n '2,6p' "$0"; exit 1 ;;
 	esac
 done
-[ ${#MODES[@]} -gt 0 ] || MODES=(gamehp)
+[ ${#MODES[@]} -gt 0 ] || MODES=(gamehp ent ent51)
 need() { command -v "$1" >/dev/null || { echo "missing: $1 ($2)"; exit 1; }; }
 need python3 "install python3"
 need make "install make (package: make / build-essential)"

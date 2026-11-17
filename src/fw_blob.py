@@ -101,6 +101,31 @@ def ops_for(rows, min_gap_us=200):
     return ops
 
 
+def xover_states(g):
+    """A computed control (mode.json "generate": {"type": "xover", ...}): the Bass Redirection crossover of the speaker
+    modes. Windows' filters are 2nd-order Butterworth, Q 1/sqrt(2), K = tan(pi f / 192000) (all 2628 sections in trace
+    xfi_20261115_214519 within 1 LSB). Per DSP core c (coefficients at coef + c * 0x1000): high-pass sections at hp[i]
+    (main channels), low-pass at lp[i] (sub); words +0 b1, +4 b2, +8 a1, +0x10 a2, +0x14 b0 (/a0, 8.24), each followed by
+    two zero words at zero + c * 0x2000 + 2 * offset (+4), in Windows' order. One state per Hz, lo..hi."""
+    import math
+    coef, zero, cores = int(g['coef'], 16), int(g['zero'], 16), g.get('cores', 4)
+    hp, lp = [int(x, 16) for x in g['hp']], [int(x, 16) for x in g['lp']]
+    out = []
+    for f in range(g['lo'], g['hi'] + 1):
+        K = math.tan(math.pi * f / 192000); Q = 1 / math.sqrt(2); D = 1 + K / Q + K * K
+        a1, a2 = 2 * (K * K - 1) / D, (1 - K / Q + K * K) / D
+        words = {'hp': [-2 / D, 1 / D, a1, a2, 1 / D], 'lp': [2 * K * K / D, K * K / D, a1, a2, K * K / D]}
+        w = []
+        for o, kind in [(o, 'hp') for o in hp] + [(o, 'lp') for o in lp]:
+            for j, wo in enumerate((0, 4, 8, 0x10, 0x14)):
+                v = round(words[kind][j] * 2**24) & 0xFFFFFFFF
+                for c in range(cores):
+                    z = zero + c * 0x2000 + 2 * (o + wo)
+                    w += [[f"{coef + c * 0x1000 + o + wo:#x}", hex(v)], [f"{z:#x}", '0x0'], [f"{z + 4:#x}", '0x0']]
+        out.append({'label': f"{f} Hz", 'writes': w})
+    return out
+
+
 def pack_ops(ops):
     return b''.join(struct.pack('<II', w0, w1) for w0, w1 in ops)
 
@@ -125,11 +150,17 @@ def main():
                        ((OP_WRITE << 28) | int(o[0], 16), int(o[1], 16)))
     ctl_blobs = []
     for c in mode.get('controls', []):
+        if len(c['name'].encode()) > 43:	# ALSA's limit; cut, the tray and the driver would not find it
+            sys.exit(f"control name too long (max 43): {c['name']}")
+        if c.get('generate', {}).get('type') == 'xover':
+            c = dict(c, states=xover_states(c['generate']))
         # count word: states | start state << 16 | slider << 31 (ct_winmode.c WM_SLIDER)
         cnt = len(c['states']) | c.get('default', 0) << 16 | (0x80000000 if c.get('slider') else 0)
         b = c['name'].encode()[:43].ljust(44, b'\0') + struct.pack('<I', cnt)
         for st in c['states']:
-            sops = [((OP_WRITE << 28) | int(a, 16), int(v, 16)) for a, v in st.get('writes', [])]
+            # ["delay", us]: a pause inside the state (Bass Redirection's fade, ct_winmode.c wm_br_params)
+            sops = [(OP_DELAY << 28, int(v)) if a == 'delay' else ((OP_WRITE << 28) | int(a, 16), int(v, 16))
+                    for a, v in st.get('writes', [])]
             flag = 0x80000000 if st.get('restore') else 0
             b += st['label'].encode()[:15].ljust(16, b'\0') + struct.pack('<I', flag | len(sops)) + pack_ops(sops)
         ctl_blobs.append(b)

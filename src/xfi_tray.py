@@ -9,14 +9,15 @@ Run as your normal user: python3 src/xfi_tray.py   (needs PyQt6, alsa-utils, pac
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 
 import cmath
 import math
 
-from PyQt6.QtCore import QPointF, QRectF, Qt, QTimer
-from PyQt6.QtGui import QAction, QColor, QIcon, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QPolygonF, QRadialGradient
+from PyQt6.QtCore import QPointF, QProcess, QRectF, Qt, QTimer
+from PyQt6.QtGui import QAction, QActionGroup, QColor, QIcon, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QPolygonF, QRadialGradient
 from PyQt6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox, QDial, QFrame, QGraphicsOpacityEffect, QGridLayout, QHBoxLayout, QLabel, QLayout,
                              QMenu, QPushButton, QRadioButton, QSlider, QStackedWidget, QSystemTrayIcon, QVBoxLayout, QWidget)
 
@@ -36,6 +37,51 @@ TONE_ENTRIES = ('Bass -', 'Bass +', 'Treble -', 'Treble +', 'Bass + Treble +')	#
 EQ_SETTINGS = 'EQ'				# settings.json: the EQ page (custom bands, Bass, Treble, level)
 NOT_SAVED = (LEVEL_CTL, MASTER_CTL)		# PipeWire remembers these
 PORTS = {'Mic': 'xfi-dsp-mic', 'What U Hear': 'xfi-dsp-wuh'}
+BR_CTL = 'DSP Bass Redirection Playback Switch'		# speaker modes (ent51): the sub's crossover, gain and level
+XOVER_CTL = 'DSP Crossover Frequency'	# 10..200 Hz, one state per Hz
+SUBGAIN_CTL = 'DSP Subwoofer Gain Playback Switch'
+SUBLEVEL_CTL = 'DSP Subwoofer Level Playback Volume'
+
+
+SWITCH = '/usr/local/sbin/xfi-dsp-mode'	# root helper (pkexec; polkit rule from the installer: no password)
+MODES = [('gamehp', 'Game, headphones (7.1 in)'), ('ent', 'Entertainment, stereo speakers'),
+         ('ent51', 'Entertainment, 5.1 speakers')]
+
+
+def installed_modes():
+    """the modes the tray can switch to: their firmware installed by xfi_dsp_install.sh, and the helper"""
+    if not os.access(SWITCH, os.X_OK) or not shutil.which('pkexec'):
+        return []
+    return [(m, d) for m, d in MODES if os.path.exists(f'/lib/firmware/ctxfi/xfi20k1-dsp-{m}.bin')]
+
+
+SHARE = '/usr/local/share/xfi-dsp'	# the installer's copy of xfi_dsp_install.sh / xfi_profile.sh (src/)
+PSET = os.path.expanduser('~/.local/share/xfi-dsp/xfi-dsp.conf')	# PipeWire profile set, its channel layout per mode
+OUT_MAP = {'gamehp': 'front-left,front-right,front-center,lfe,rear-left,rear-right,side-left,side-right',
+           'ent': 'left,right', 'ent51': 'front-left,front-right,front-center,lfe,rear-left,rear-right'}
+UPMIX_OFF = os.path.expanduser('~/.config/pipewire/client.conf.d/xfi-dsp-upmix.conf')	# ent51 only
+
+
+def pipewire_fits(mode):
+    """the PipeWire setup matches the running mode: else the card's 'X-Fi DSP' profile can't open (e.g. a reboot after
+    xfi_test.sh tried another mode) and PipeWire falls back to Analog Stereo - no sound. None: nothing to check"""
+    try:
+        lines = open(PSET).read().split('[Mapping xfi-dsp]', 1)[1].splitlines()
+    except (OSError, IndexError):
+        return None
+    cmap = next((l.split('=', 1)[1].strip() for l in lines if l.startswith('channel-map')), None)
+    return cmap == OUT_MAP[mode] and os.path.exists(UPMIX_OFF) == (mode == 'ent51')
+
+
+def loaded_mode(ctls):
+    """the mode of the firmware that is running, from its controls (the installed one may differ: xfi_test.sh)"""
+    if BR_CTL in ctls:
+        return 'ent51'
+    if 'DSP EAX Playback Volume' in ctls:
+        return 'gamehp'
+    return 'ent'
+
+
 # (tab, control, label, slider that belongs to it). CMSS-3D first: switching it resets EAX and Mic Environment.
 # Master is the knob below the tabs, Output sits next to it.
 LAYOUT = [
@@ -47,6 +93,9 @@ LAYOUT = [
     ('Effects', 'DSP SVM Playback Switch', 'SVM', None),
     ('Effects', 'DSP Bass Boost Playback Switch', 'Bass Boost', ('DSP Bass Boost Level Playback Volume',
                                                                  'DSP Bass Boost Cutoff Playback Volume')),
+    ('Effects', BR_CTL, 'Bass Redirection', XOVER_CTL),
+    ('Effects', 'DSP Subwoofer Gain Playback Switch', 'Subwoofer +15 dB', None),
+    ('Effects', 'DSP Subwoofer Level Playback Volume', 'Subwoofer Level', None),
     ('EQ', EQ_CTL, 'Preset', 'DSP EQ Level Playback Volume'),
     ('Microphone', LEVEL_CTL, 'Mic Level', None),
     ('Microphone', BOOST_CTL, 'Mic Boost', None),
@@ -56,7 +105,7 @@ LAYOUT = [
 ]
 TABS = ['Effects', 'EQ', 'Microphone']
 BESIDE = {UPMIX_CTL: 'DSP CMSS-3D Playback Switch'}	# switches shown on the same row as another, to its right
-SUB_LABEL = {'DSP Bass Boost Cutoff Playback Volume': 'Cutoff', UPMIX_AMOUNT: 'Envelopment'}	# a control's sliders: 'Level' unless named here
+SUB_LABEL = {'DSP Bass Boost Cutoff Playback Volume': 'Cutoff', UPMIX_AMOUNT: 'Envelopment', XOVER_CTL: 'Crossover Frequency'}	# a control's sliders: 'Level' unless named here
 
 
 def subs(level):
@@ -331,6 +380,8 @@ def value_text(name, v, c):
         return f'{3 + v / 2:g} dB'
     if name == BASS_CUTOFF:
         return f'{v} Hz'
+    if name == XOVER_CTL:
+        return f'{10 + v} Hz'
     if name == UPMIX_AMOUNT:
         return f'{v}%'
     if name == BOOST_CTL:
@@ -793,7 +844,7 @@ class EqPage(QWidget):
             self.e['level'] = min(v, 100)
         self.show_state()
         self.panel.saved[EQ_SETTINGS] = dict(self.e)
-        save_settings(self.panel.saved)
+        save_settings(self.panel.conf)	# the whole file: saved is only this mode's part
         if self.e['custom'] or self.e['bass'] or self.e['treble'] or self.e['level'] < 100:
             apply_eq(self.e)
         elif level:
@@ -801,7 +852,7 @@ class EqPage(QWidget):
 
     def push(self):
         self.panel.saved[EQ_SETTINGS] = dict(self.e)
-        save_settings(self.panel.saved)
+        save_settings(self.panel.conf)	# the whole file: saved is only this mode's part
         apply_eq(self.e)
 
 
@@ -812,8 +863,11 @@ class Panel(QWidget):
         self.setWindowIcon(make_icon(True))
         self.setObjectName('Panel')
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.saved = load_settings()
-        self.apply_style(self.saved.get('theme') != 'xfi')		# default: the desktop theme's colours
+        # settings.json: gamehp's controls at the top level (as before 2026-11-16), the other modes' under "modes"; the
+        # theme at the top. self.saved = the running mode's part, chosen when the DSP comes up
+        self.conf = self.saved = load_settings()
+        self.mode = None
+        self.apply_style(self.conf.get('theme') != 'xfi')		# default: the desktop theme's colours
         # no system frame: our own title strip with a close button, dragged to move the window
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
         self.tab = TABS[0]		# the tab shown, kept across rebuilds
@@ -822,6 +876,11 @@ class Panel(QWidget):
         self.widgets = {}
         self.layout_key = None
         self.restored = False
+        self.pw_checked = False
+        self.pw_proc = None
+        self.switching = None		# the mode the tray is switching to (Tray.switch_mode)
+        self.on_switch = None		# Tray.switch_mode, for the Mode box
+        self.dimmed = False
         self.pending = {}
         self.outer = QVBoxLayout(self)
         self.outer.setContentsMargins(12, 6, 12, 12)
@@ -833,6 +892,9 @@ class Panel(QWidget):
         t.setObjectName('Title')
         tb.addWidget(t)
         tb.addStretch()
+        self.tstate = QLabel()			# 'starting...' etc. while the panel is dimmed (same size as running)
+        self.tstate.setObjectName('Status')
+        tb.addWidget(self.tstate)
         x = QPushButton('\u2715')
         x.setObjectName('Close')
         x.setToolTip('Close (the tray icon stays)')
@@ -864,7 +926,7 @@ class Panel(QWidget):
         else:
             return
         if self.saved.pop('DSP EQ Level Playback Volume', None) is not None:
-            save_settings(self.saved)		# the EQ page has its own level
+            save_settings(self.conf)		# the EQ page has its own level
         if label not in TONE_ENTRIES:
             return
         self.saved[EQ_CTL] = eq['items'].index('Off') if 'Off' in eq['items'] else 0
@@ -873,7 +935,7 @@ class Panel(QWidget):
         e['bass'] = 24 if 'Bass +' in label else -24 if 'Bass -' in label else 0
         e['treble'] = 24 if 'Treble +' in label else -24 if 'Treble -' in label else 0
         self.saved[EQ_SETTINGS] = e
-        save_settings(self.saved)
+        save_settings(self.conf)
 
     def apply_style(self, system):
         """the X-Fi look, or the same layout in the desktop theme's colours"""
@@ -883,10 +945,10 @@ class Panel(QWidget):
     def set_theme(self, system):
         self.apply_style(system)
         if system:
-            self.saved.pop('theme', None)
+            self.conf.pop('theme', None)
         else:
-            self.saved['theme'] = 'xfi'
-        save_settings(self.saved)
+            self.conf['theme'] = 'xfi'
+        save_settings(self.conf)
         self.layout_key = None		# rebuild: the knob takes its colours when it is made
         self.refresh()
 
@@ -901,6 +963,14 @@ class Panel(QWidget):
         else:
             super().keyPressEvent(e)
 
+    def fix_pipewire(self):
+        """PipeWire set up for another mode (see pipewire_fits): set it up for this one, as a mode switch does"""
+        if pipewire_fits(self.mode) is not False or not os.access(f'{SHARE}/src/xfi_dsp_install.sh', os.X_OK):
+            return
+        self.pw_proc = QProcess()
+        self.pw_proc.setWorkingDirectory(SHARE)
+        self.pw_proc.start('sh', ['-c', f'XFI_MODE={self.mode} ./src/xfi_dsp_install.sh pipewire && sleep 2 && ./src/xfi_profile.sh'])
+
     def active(self):
         return self.state == 'running' and bool(self.ctls)
 
@@ -912,26 +982,63 @@ class Panel(QWidget):
         self.state = dsp_state()
         self.ctls = read_controls() if self.state == 'running' else {}
         if self.ctls and not self.restored:
+            self.mode = loaded_mode(self.ctls)
+            self.saved = self.conf if self.mode == 'gamehp' else self.conf.setdefault('modes', {}).setdefault(self.mode, {})
             self.convert_tone_entry()
             restore(self.ctls, self.saved)
             if BANK_CTL in self.ctls:
                 apply_eq(eq_state(self.saved))	# the driver starts with the recorded preset: the page's EQ on top
             self.restored = True
             self.ctls = read_controls()
+            if not self.pw_checked:		# once, at the tray's start (login): a mode switch sets PipeWire up itself
+                self.pw_checked = True
+                self.fix_pipewire()
         elif self.ctls and self.saved.get(UPMIX_CTL) and self.ctls.get(UPMIX_CTL, {}).get('value') is False:
             write_control(UPMIX_CTL, True)		# it was on, but PipeWire restarted: bring it back
             self.ctls = read_controls()
         elif not self.ctls:
             self.restored = False
         key = tuple(sorted(self.ctls))
-        if key != self.layout_key:
-            self.layout_key = key
-            self.build()
+        if not self.ctls and self.layout_key:
+            self.dim(True)			# DSP away (mode switch, restart): keep the last layout, dimmed
+        else:
+            if key != self.layout_key:
+                self.layout_key = key
+                self.build()
+            self.dim(False)
         self.show_values()
         if BANK_CTL in self.ctls and getattr(self, 'eqpage', None) is not None:
             self.eqpage.follow_card()
-        self.status.setText(STATE_TEXT.get(self.state, 'The X-Fi DSP is not running'))
-        self.status.setVisible(not self.ctls)
+        text = f'Switching to {self.switching}...' if self.switching else \
+            '' if self.ctls else STATE_TEXT.get(self.state, 'The X-Fi DSP is not running')
+        self.status.setText(text)
+        self.status.setVisible(not self.ctls and not self.layout_key)	# no layout yet: the small window
+        self.tstate.setText(text if self.layout_key else '')
+        if getattr(self, 'mode_box', None) is not None:
+            self.mode_box.setEnabled(not self.switching)
+        if getattr(self, 'mode_box', None) is not None and not self.switching:
+            i = self.mode_box.findData(self.mode)
+            if i >= 0 and i != self.mode_box.currentIndex():
+                self.mode_box.blockSignals(True)
+                self.mode_box.setCurrentIndex(i)
+                self.mode_box.blockSignals(False)
+
+    def dim(self, on):
+        """the whole panel faded and disabled while the DSP is away, at its full size"""
+        if self.body is None or on == self.dimmed:
+            return
+        self.dimmed = on
+        if on:
+            fx = QGraphicsOpacityEffect(self.body)
+            fx.setOpacity(0.35)
+            self.body.setGraphicsEffect(fx)
+        else:
+            self.body.setGraphicsEffect(None)
+        self.body.setEnabled(not on)
+
+    def pick_mode(self, m):
+        if m and m != self.mode and self.on_switch:
+            self.on_switch(m)
 
     def build(self):
         if self.body is not None:
@@ -943,6 +1050,8 @@ class Panel(QWidget):
         self.rows = {}			# slider name -> the widget to dim while its effect is off
         self.labels = {}		# slider name -> its name label, for rows that can be hidden
         self.body = QWidget()
+        self.dimmed = False
+        self.mode_box = None
         v = QVBoxLayout(self.body)
         v.setContentsMargins(0, 0, 0, 0)
         v.setSpacing(10)
@@ -1012,12 +1121,26 @@ class Panel(QWidget):
         t = QLabel('STATUS')
         t.setObjectName('PageTitle')
         ih.addWidget(t)
-        try:
-            with open('/etc/xfi-dsp-mode') as f:
-                mode = f.read().strip()
-        except OSError:
-            mode = ''
-        ih.addWidget(QLabel('DSP running' + (f' \u00b7 mode {mode}' if mode else '')))
+        mode = self.mode or ''
+        modes = installed_modes()
+        if modes and mode:
+            ih.addWidget(QLabel('DSP running'))
+            mh = QHBoxLayout()
+            mh.addWidget(QLabel('Mode'))
+            cb = QComboBox()
+            if mode not in [m for m, _ in modes]:
+                cb.addItem(f'{mode}  \u2013  test firmware', mode)	# xfi_test.sh: not an installed one
+            for m, d in modes:
+                cb.addItem(f'{m}  \u2013  {d}', m)
+            cb.setCurrentIndex(cb.findData(mode))
+            cb.setToolTip('Switch the X-Fi to another mode (about 10 s without sound); the next boot starts it too')
+            cb.activated.connect(lambda i, cb=cb: self.pick_mode(cb.itemData(i)))
+            mh.addWidget(cb)
+            mh.addStretch()
+            ih.addLayout(mh)
+            self.mode_box = cb
+        else:
+            ih.addWidget(QLabel('DSP running' + (f' \u00b7 mode {mode}' if mode else '')))
         ih.addStretch()
         og = QGridLayout()
         og.setColumnStretch(1, 1)
@@ -1172,6 +1295,28 @@ class Panel(QWidget):
                     fx = QGraphicsOpacityEffect(row)
                     row.setGraphicsEffect(fx)
                 fx.setOpacity(1.0 if on else 0.4)
+        # Bass Redirection off: the crossover and +15 dB do nothing (the driver applies them when it goes on) - greyed
+        # and locked; Subwoofer Level greyed only: it is still the volume of a 5.1 source's own LFE channel
+        br = self.ctls.get(BR_CTL)
+        if br and br['value'] is not None:
+            on = bool(br['value'])
+            for name, lock in ((XOVER_CTL, True), (SUBGAIN_CTL, True), (SUBLEVEL_CTL, False)):
+                w = self.widgets.get(name)
+                if w is None:
+                    continue
+                row = self.rows.get(name, w)
+                fx = row.graphicsEffect()
+                if fx is None:
+                    fx = QGraphicsOpacityEffect(row)
+                    row.setGraphicsEffect(fx)
+                fx.setOpacity(1.0 if on else 0.4)
+                if name in self.labels:
+                    self.labels[name].setEnabled(on or not lock)
+                if lock:
+                    w.setEnabled(on)
+                    w.setToolTip('' if on else 'Works with Bass Redirection on')
+                else:
+                    w.setToolTip('' if on else 'Bass Redirection off: only the LFE channel of 5.1 movies and games reaches the subwoofer')
         src, lvl = self.ctls.get(SOURCE_CTL), self.widgets.get(LEVEL_CTL)
         if src and lvl:		# What U Hear has its own level: the taskbar slider, in software
             mic = src['items'][src['value']] == 'Mic'
@@ -1189,7 +1334,7 @@ class Panel(QWidget):
             if name not in NOT_SAVED:
                 self.saved[name] = self.pending[name]
         self.pending = {}
-        save_settings(self.saved)
+        save_settings(self.conf)
         self.refresh()
 
     def source(self, item):
@@ -1201,12 +1346,24 @@ class Tray:
     def __init__(self, app):
         self.app = app
         self.panel = Panel()
+        self.panel.on_switch = self.switch_mode
         self.tray = QSystemTrayIcon(make_icon(self.panel.active()))
         self.tray.setToolTip('X-Fi DSP')
         self.menu = QMenu()
         a = QAction('Open', self.menu)
         a.triggered.connect(self.show)
         self.menu.addAction(a)
+        self.modes = self.menu.addMenu('Mode')
+        self.mode_group = QActionGroup(self.modes)
+        for m, d in installed_modes():
+            a = QAction(f'{m}  \u2013  {d}', self.modes, checkable=True)
+            a.setData(m)
+            a.triggered.connect(lambda _, m=m: self.switch_mode(m))
+            self.mode_group.addAction(a)
+            self.modes.addAction(a)
+        self.modes.menuAction().setVisible(bool(self.mode_group.actions()))
+        self.modes.aboutToShow.connect(self.tick_mode)
+        self.proc = None
         a = QAction('Use system colors', self.menu, checkable=True)
         a.setChecked(self.panel.system)
         a.toggled.connect(self.panel.set_theme)
@@ -1221,6 +1378,48 @@ class Tray:
         self.timer = QTimer(interval=3000)
         self.timer.timeout.connect(self.update_icon)
         self.timer.start()
+        self.update_icon()
+
+    def tick_mode(self):
+        for a in self.mode_group.actions():
+            a.setChecked(a.data() == self.panel.mode)
+            a.setEnabled(self.proc is None)
+
+    def switch_mode(self, m):
+        """another firmware, without a reboot (about 10 s of silence); the next boot starts it too"""
+        if self.proc is not None or m == self.panel.mode:
+            return
+        self.proc = QProcess()
+        self.proc.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
+        self.proc.finished.connect(lambda code, _status, m=m: self.mode_done(m, code))
+        self.proc.errorOccurred.connect(lambda err, m=m: self.mode_failed(m, err))
+        self.proc.start('pkexec', [SWITCH, m])
+        self.panel.switching = m
+        self.panel.refresh()
+        self.tray.setToolTip(f'X-Fi DSP: switching to {m}')
+        self.tray.showMessage('X-Fi DSP', f'Switching to {m} - about 10 seconds', make_icon(False), 4000)
+
+    def mode_failed(self, m, err):
+        if err != QProcess.ProcessError.FailedToStart:
+            return				# the others end in finished too
+        self.proc = None
+        self.panel.switching = None
+        self.panel.refresh()
+        self.tray.showMessage('X-Fi DSP', f'Could not switch to {m}: pkexec did not start', make_icon(False), 8000)
+        self.last = None
+        self.update_icon()
+
+    def mode_done(self, m, code):
+        if self.proc is None:
+            return
+        out = bytes(self.proc.readAll()).decode(errors='replace').strip()
+        self.proc = None
+        self.panel.switching = None
+        if code:
+            last = out.splitlines()[-1] if out else ('cancelled' if code in (126, 127) else f'exit code {code}')
+            self.tray.showMessage('X-Fi DSP', f'Could not switch to {m}: {last}', make_icon(False), 8000)
+        self.last = None			# the icon and tooltip again
+        self.panel.refresh()
         self.update_icon()
 
     def update_icon(self):

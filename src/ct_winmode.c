@@ -118,7 +118,7 @@ MODULE_PARM_DESC(winmode_full_pauses, "Windows mode: replay every pause of the W
 #define GIE		0x1C6014
 #define SRC_BASE(n)	(0x1B0000 + (n) * 0x100)
 #define SRC_ALIST_N	8		/* address-list entries per converter */
-#define WM_MAX_CTL	16
+#define WM_MAX_CTL	24
 
 enum wm_state { WM_IDLE, WM_LOADING, WM_RUNNING, WM_FAILED };
 
@@ -130,7 +130,7 @@ static struct {
 	char why[96];
 	u32 done, total;
 	u32 src, map_entry, loop_sa;	/* playback stream (firmware v2 header) */
-	u32 channels;			/* of the playback stream: 2, 4 or 8 (src word bits 16+; converters src..src+n-1) */
+	u32 channels;			/* of the playback stream: 2, 4, 6 or 8 (src word bits 16+; converters src..src+n-1) */
 	u32 cap_src;			/* recording converter (header word 7, 0 = none; its loop: ct_dsp_fx_rec_buf) */
 } wm = { .src = 202, .map_entry = 0x131940, .loop_sa = 0x1B7D000, .channels = 2 };
 
@@ -181,6 +181,40 @@ static struct wm_ctl wm_ctls[WM_MAX_CTL];
 static unsigned int wm_n_ctls;
 static bool wm_gone;		/* ct_winmode_card_gone() */
 static int wm_master = -1;	/* firmware control WM_MASTER_NAME: not registered, ct_winplay's control drives it */
+/*
+ * Subwoofer Level (speaker modes, 2026-11-15): Windows writes the sub channel's master params as level x master volume
+ * (Ent 5.1: params 0x17/0x27, level 0..1 linear, 50 % = the master's own 0.5). The firmware's states hold the level at
+ * 0 dB; the driver scales their parameter values by the master's gain (its state's param 0x0e target, 1.0 at 0 dB) and
+ * writes them again after every master change.
+ */
+#define WM_SUB_NAME	"DSP Subwoofer Level Playback Volume"
+/*
+ * Bass Redirection (speaker modes, 2026-11-16): its crossover and Subwoofer Gain write the filters and sub sends that
+ * the switch's "off" sets to pass-through and 0. They are written only while the switch is on, and again right after
+ * it is switched on.
+ */
+#define WM_BR_SWITCH	"DSP Bass Redirection Playback Switch"
+static bool wm_br_dependent(const struct wm_ctl *c)
+{
+	return !strcmp(c->name, "DSP Crossover Frequency") ||
+	       !strcmp(c->name, "DSP Subwoofer Gain Playback Switch");
+}
+
+#define WM_MASTER_REF	0x154038	/* param 0x0e target: the master's gain */
+static int wm_sub = -1;
+
+static u32 wm_master_gain(void)
+{
+	const struct wm_state_ops *st;
+
+	if (wm_master < 0)
+		return 0x1000000;
+	st = &wm_ctls[wm_master].st[wm_ctls[wm_master].want];
+	for (u32 k = 0; k < st->n; k++)
+		if ((st->ops[2 * k] & 0x0FFFFFFF) == WM_MASTER_REF)
+			return st->ops[2 * k + 1];
+	return 0x1000000;
+}
 
 static u32 rd(u32 reg)
 {
@@ -257,7 +291,7 @@ static bool wm_ctl_has_restore(struct wm_ctl *c)
 
 /*
  * Bass Boost computed (analysis/bassboost/model.py, fit to two VM traces): each of the level's 14 identical sections is
- * one biquad, the bilinear transform at 96 kHz of H(s) = s (s + k wp) / (s + wp)^2 with wp = 2 pi r fc, where k and r
+ * one biquad, the bilinear transform at 96 kHz (gamehp) or 192 kHz (ent) of H(s) = s (s + k wp) / (s + wp)^2 with wp = 2 pi r fc, where k and r
  * depend only on the level and the cutoff fc only scales frequency. Words (8.24) at section + 0/4/8/0x10/0x14:
  * b1, b2, a1, a2, b0 over a0. Tables: k and r for the 19 levels 3..12 dB (Q32). Only used when the firmware's
  * level states match the formula (wm_bass_check): then the cutoff control exists and every level step is computed.
@@ -268,7 +302,9 @@ static bool wm_ctl_has_restore(struct wm_ctl *c)
 #define WM_BASS_FC_DEF	100		/* Windows' default, where 'on' leaves the card */
 #define WM_BASS_LO	0x198000	/* the sections' words */
 #define WM_BASS_HI	0x19C000
-#define WM_BASS_PI_FS	9211247073ULL	/* pi / 96000 in Q48 */
+/* pi / fs in Q48 for the rates a firmware's Bass Boost runs at: 96 kHz (gamehp), 192 kHz (ent); wm_bass_check picks */
+static const u64 wm_bass_pi_fs_tab[] = { 9211247073ULL, 4605623536ULL };
+static u64 wm_bass_pi_fs = 9211247073ULL;
 static const u64 wm_bass_k[WM_BASS_LEVELS] = {
 	10702743077ULL, 11482530041ULL, 12311616542ULL, 13192514211ULL, 14127817003ULL, 15120200534ULL, 16172421111ULL,
 	17287314445ULL, 18467794015ULL, 19716849081ULL, 21037542316ULL, 22433007054ULL, 23906444118ULL, 25461118236ULL,
@@ -290,7 +326,7 @@ static s32 wm_bass_div(s64 n, u64 a0)		/* round(n / a0) in 8.24 */
 static void wm_bass_words(unsigned int lvl, unsigned int fc, s32 w[5])
 {
 	const u64 one = 1ULL << 48;
-	u64 x = mul_u64_u64_shr(wm_bass_r[lvl] * fc, WM_BASS_PI_FS, 32);	/* wp / (2 fs), Q48 */
+	u64 x = mul_u64_u64_shr(wm_bass_r[lvl] * fc, wm_bass_pi_fs, 32);	/* wp / (2 fs), Q48 */
 	u64 x2 = mul_u64_u64_shr(x, x, 48);
 	u64 kx = mul_u64_u64_shr(wm_bass_k[lvl], x, 32);
 	u64 a0 = one + 2 * x + x2;
@@ -372,10 +408,8 @@ static bool wm_bass_step_once(struct wm_ctl *c)
 
 /* the formula against the firmware's level states at the default cutoff: most sections within a few LSB (Windows' own
  * passes overlap a little: gamehp's 3 dB state still has 4 sections of the step before) */
-static void wm_bass_check(struct wm_ctl *c)
+static bool wm_bass_fits(struct wm_ctl *c)
 {
-	if (!c->slider || c->n_states != WM_BASS_LEVELS)
-		return;
 	for (u32 s = 0; s < c->n_states; s++) {
 		struct wm_state_ops *st = &c->st[s];
 		u32 good = 0, all = 0;
@@ -392,9 +426,23 @@ static void wm_bass_check(struct wm_ctl *c)
 			good += abs((s32)st->ops[2 * k + 1] - w[i]) <= 16;
 		}
 		if (all < 5 || good * 3 < all * 2)
-			return;
+			return false;
 	}
-	wm_bass_calc = true;
+	return true;
+}
+
+static void wm_bass_check(struct wm_ctl *c)
+{
+	if (!c->slider || c->n_states != WM_BASS_LEVELS)
+		return;
+	for (u32 i = 0; i < ARRAY_SIZE(wm_bass_pi_fs_tab); i++) {
+		wm_bass_pi_fs = wm_bass_pi_fs_tab[i];
+		if (wm_bass_fits(c)) {
+			wm_bass_calc = true;
+			return;
+		}
+	}
+	wm_bass_pi_fs = wm_bass_pi_fs_tab[0];
 }
 
 static void wm_bass_fn(struct work_struct *work)
@@ -435,9 +483,177 @@ static void wm_raw_apply(struct wm_ctl *c)
 	}
 }
 
+/*
+ * The crossover is walked, as Windows does (trace xfi_20261115_214519: passes ~x1.2 apart): a jump of the 9 filter
+ * sections - pass-through to 100 Hz on switching on - kicks the speakers. State i = 10 + i Hz. Switching on starts at
+ * 10 Hz (nearly pass-through) and walks up; switching off ramps the sends down, walks down, then sets the filters to
+ * pass-through (the off state's non-parameter words). Moving the slider walks too. A work item does the steps.
+ */
+#define WM_XOVER	"DSP Crossover Frequency"
+#define WM_XOVER_MS	40
+static DEFINE_MUTEX(wm_xover_lock);
+static bool winmode_log_xover;
+module_param(winmode_log_xover, bool, 0644);
+MODULE_PARM_DESC(winmode_log_xover, "Windows mode: log the crossover / Bass Redirection steps (debugging)");
+#define xlog(fmt, ...) do { if (winmode_log_xover) pr_info("xfi_xover: " fmt "\n", ##__VA_ARGS__); } while (0)
+static bool wm_br_bypassed = true;	/* the filters are pass-through (start, or after an off walk) */
+static void wm_ctl_apply(struct wm_ctl *c);
+
+static bool wm_is_param(u32 a)
+{
+	return a >= 0x150000 && a < WM_PARAM_HI;	/* current, target, slope */
+}
+
+/* a state's parameter writes only (params = true) or everything else */
+static void wm_write_part(const struct wm_state_ops *st, bool params)
+{
+	for (u32 k = 0; k < st->n; k++) {
+		u32 a = st->ops[2 * k] & 0x0FFFFFFF;
+
+		if ((st->ops[2 * k] >> 28) == OP_WRITE && wm_is_param(a) == params)
+			wr(a, st->ops[2 * k + 1]);
+	}
+}
+
+/* only the filter coefficients of a crossover state (0x198000..0x19BFFF) */
+static void wm_write_coefs(const struct wm_state_ops *st)
+{
+	for (u32 k = 0; k < st->n; k++) {
+		u32 a = st->ops[2 * k] & 0x0FFFFFFF;
+
+		if ((st->ops[2 * k] >> 28) == OP_WRITE && a >= 0x198000 && a < 0x19C000)
+			wr(a, st->ops[2 * k + 1]);
+	}
+}
+
+/* under wm_xover_lock; true: more steps to go */
+static bool wm_xover_step_once(struct wm_ctl *c)
+{
+	struct wm_ctl *sw = wm_find_ctl(WM_BR_SWITCH);
+	unsigned int on = sw ? sw->want : 1, target = on ? c->want : 0, f = 10 + c->at, tf = 10 + target;
+
+	xlog("step on=%u at=%u want=%u target=%u bypassed=%d", on, c->at, c->want, target, wm_br_bypassed);
+	if (c->at == target) {
+		if (!on && sw && !wm_br_bypassed) {
+			wm_write_part(&sw->st[0], false);	/* the filters to pass-through */
+			wm_br_bypassed = true;
+		}
+		return false;
+	}
+	f = f < tf ? min(max(f * 6 / 5, f + 1), tf) : max(min(f * 5 / 6, f - 1), tf);
+	c->at = f - 10;
+	wm_write_coefs(&c->st[c->at]);	/* not the zero words: the filters' memory (the DSP updates it), see below */
+	/* off: one more step writes pass-through (2026-11-17: without it the filters stayed at 10 Hz until the next
+	 * crossover move, and that move made the next 'on' take the from-pass-through path) */
+	return c->at != target || (!on && sw && !wm_br_bypassed);
+}
+
+static void wm_xover_fn(struct work_struct *work)
+{
+	struct wm_ctl *c = wm_find_ctl(WM_XOVER);
+	bool more = false;
+
+	if (!c)
+		return;
+	mutex_lock(&wm_xover_lock);
+	if (READ_ONCE(wm.state) == WM_RUNNING)
+		more = wm_xover_step_once(c);
+	mutex_unlock(&wm_xover_lock);
+	if (more)
+		schedule_delayed_work(to_delayed_work(work), msecs_to_jiffies(WM_XOVER_MS));
+}
+static DECLARE_DELAYED_WORK(wm_xover_work, wm_xover_fn);
+
+/* running: in the background; before that (start, resume) all at once */
+static void wm_xover_step(void)
+{
+	struct wm_ctl *c = wm_find_ctl(WM_XOVER);
+
+	if (!c)
+		return;
+	if (READ_ONCE(wm.state) == WM_RUNNING) {
+		schedule_delayed_work(&wm_xover_work, 0);
+		return;
+	}
+	mutex_lock(&wm_xover_lock);
+	while (wm_xover_step_once(c))
+		;
+	mutex_unlock(&wm_xover_lock);
+}
+
+/* the switch: its parameter ramps now (Windows' own, sends and gains), the filters through the walk */
+/*
+ * A switch state's parameter writes with Windows' pauses (OP_DELAY, 2026-11-17): Windows fades the main channels down,
+ * waits ~200 ms, changes the filters while they are silent, then jumps to 0 and fades back up. Written back to back,
+ * the fade never happened and the mute was abrupt (a quiet blip at 'on'). xs: the crossover state when leaving
+ * pass-through, or NULL. Its sub low-passes go first, before the sends open (else full-range music reached the sub
+ * for the ~0.3 s of the fade; they had no input while off, so no click); its main high-passes go in the last pause,
+ * while the mains are faded out (switched at full level, the half-written sections clicked in front L/R). User
+ * 2026-11-17.
+ */
+#define WM_XOVER_LP_OFF	0x640		/* sections from here on (per core) are the sub's low-passes */
+static void wm_write_coefs_part(const struct wm_state_ops *st, bool lp)
+{
+	for (u32 k = 0; k < st->n; k++) {
+		u32 a = st->ops[2 * k] & 0x0FFFFFFF;
+
+		if ((st->ops[2 * k] >> 28) == OP_WRITE && a >= 0x198000 && a < 0x19C000 &&
+		    ((a & 0xFFF) >= WM_XOVER_LP_OFF) == lp)
+			wr(a, st->ops[2 * k + 1]);
+	}
+}
+
+static void wm_br_params(const struct wm_state_ops *st, const struct wm_state_ops *xs)
+{
+	u32 last = st->n;
+
+	for (u32 k = 0; k < st->n; k++)
+		if ((st->ops[2 * k] >> 28) == OP_DELAY)
+			last = k;
+	if (xs)
+		wm_write_coefs_part(xs, true);
+	for (u32 k = 0; k < st->n; k++) {
+		u32 op = st->ops[2 * k] >> 28, a = st->ops[2 * k] & 0x0FFFFFFF;
+
+		if (op == OP_WRITE && wm_is_param(a))
+			wr(a, st->ops[2 * k + 1]);
+		else if (op == OP_DELAY)
+			msleep(DIV_ROUND_UP(min(st->ops[2 * k + 1], 1000000u), 1000));
+		if (k == last && xs)
+			wm_write_coefs_part(xs, false);
+	}
+	if (last == st->n && xs)
+		wm_write_coefs_part(xs, false);
+}
+
+static void wm_br_switch_apply(struct wm_ctl *sw)
+{
+	struct wm_ctl *x = wm_find_ctl(WM_XOVER);
+	bool leave = sw->want && x && wm_br_bypassed;
+
+	mutex_lock(&wm_xover_lock);
+	xlog("switch want=%u bypassed=%d xover at=%u want=%u", sw->want, wm_br_bypassed, x ? x->at : 0, x ? x->want : 0);
+	if (leave)
+		x->at = 0;				/* 10 Hz: next to pass-through */
+	/* leaving pass-through: coefficients only (low-passes first, high-passes in the pause). The filters' memory holds the music
+	 * (pass-through: output = input), exactly what a 10 Hz high-pass continues from; clearing it while music plays
+	 * started each filter from zero, a slow low thump per DSP core (user 2026-11-17: 4-5 loud bass blips at 'on') */
+	wm_br_params(&sw->st[sw->want], leave ? &x->st[0] : NULL);
+	if (leave)
+		wm_br_bypassed = false;
+	mutex_unlock(&wm_xover_lock);
+	if (sw->want)
+		for (unsigned int i = 0; i < wm_n_ctls; i++)
+			if (!strcmp(wm_ctls[i].name, "DSP Subwoofer Gain Playback Switch"))
+				wm_ctl_apply(&wm_ctls[i]);
+	wm_xover_step();
+}
+
 static void wm_ctl_apply(struct wm_ctl *c)
 {
 	struct wm_state_ops *st = &c->st[c->want];
+
+	xlog("apply %s want=%u at=%u", c->name, c->want, c->at);
 
 	bool bass_switch = !strcmp(c->name, WM_BASS_SWITCH);
 
@@ -446,6 +662,20 @@ static void wm_ctl_apply(struct wm_ctl *c)
 		wm_bass_step(c);
 		mutex_unlock(&wm_bass_lock);
 		return;
+	}
+	if (!strcmp(c->name, WM_BR_SWITCH)) {
+		wm_br_switch_apply(c);
+		return;
+	}
+	if (!strcmp(c->name, WM_XOVER)) {
+		wm_xover_step();			/* off: it walks when the switch goes on */
+		return;
+	}
+	if (wm_br_dependent(c)) {
+		struct wm_ctl *sw = wm_find_ctl(WM_BR_SWITCH);
+
+		if (sw && !sw->want)
+			return;		/* applied when the switch goes on */
 	}
 	if (bass_switch)
 		mutex_lock(&wm_bass_lock);
@@ -475,9 +705,31 @@ static void wm_ctl_apply(struct wm_ctl *c)
 			c->n_snap = m;
 		}
 	}
+	if ((int)(c - wm_ctls) == wm_sub) {
+		u32 g = wm_master_gain();
+
+		/* a ramp, as Windows (1 % = 0x28f5c moves at slope 0x1f4, bit 15 = down): the target and the slope only, the
+		 * engine glides from where it is. A jump ticks (user 2026-11-16) */
+		for (u32 k = 0; k < st->n; k++) {
+			u32 a = st->ops[2 * k] & 0x0FFFFFFF, v = st->ops[2 * k + 1], now, d, slope;
+
+			if ((st->ops[2 * k] >> 28) != OP_WRITE || a < WM_PT_LO || a >= WM_PT_HI)
+				continue;
+			v = (u32)(((u64)v * g) >> 24);
+			now = rd(a - 0x4000);			/* the current value */
+			d = v > now ? v - now : now - v;
+			slope = clamp_t(u32, (u32)(((u64)d * 0x1f4) / 0x28f5c), 1, 0x7fff) | (v < now ? 0x8000 : 0);
+			wr(a, v);
+			wr(a + 0x4000, slope);
+		}
+		return;
+	}
 	for (u32 k = 0; k < st->n; k++)
 		if ((st->ops[2 * k] >> 28) == OP_WRITE)
 			wr(st->ops[2 * k] & 0x0FFFFFFF, st->ops[2 * k + 1]);
+	/* the master wrote the sub's params at the trace's level: put the chosen one back */
+	if ((int)(c - wm_ctls) == wm_master && wm_sub >= 0 && wm_ctls[wm_sub].want != wm_ctls[wm_sub].def)
+		wm_ctl_apply(&wm_ctls[wm_sub]);
 	if (bass_switch) {
 		struct wm_ctl *l = wm_find_ctl(WM_BASS_LEVEL);
 
@@ -502,6 +754,12 @@ static void wm_mute_outputs(void)
 /* states the user chose before Windows mode came up (the start state = the trace, nothing to do) */
 static void wm_apply_effects(void)
 {
+	struct wm_ctl *x = wm_find_ctl(WM_XOVER);
+
+	if (x) {				/* a fresh start: the filters are pass-through again */
+		x->at = 0;
+		wm_br_bypassed = true;
+	}
 	for (unsigned int i = 0; i < wm_n_ctls; i++)
 		if (wm_ctls[i].raw ? wm_ctls[i].raw_set : wm_ctls[i].want != wm_ctls[i].def)
 			wm_ctls[i].raw ? wm_raw_apply(&wm_ctls[i]) : wm_ctl_apply(&wm_ctls[i]);
@@ -766,8 +1024,8 @@ static int wm_thread(void *unused)
 	mutex_lock(&wm.lock);
 	wm.total = n;
 	wm.src = le32_to_cpu(p[4]) & 0xFFFF;
-	wm.channels = le32_to_cpu(p[4]) >> 16;		/* 8 (gamehp), 4 (Ent 4.1 test), else stereo */
-	if (wm.channels != 8 && wm.channels != 4)
+	wm.channels = le32_to_cpu(p[4]) >> 16;		/* 8 (gamehp), 4 / 6 (4.1 / 5.1 speakers), else stereo */
+	if (wm.channels != 8 && wm.channels != 6 && wm.channels != 4)
 		wm.channels = 2;
 	wm.map_entry = le32_to_cpu(p[5]);
 	wm.loop_sa = le32_to_cpu(p[6]);
@@ -950,6 +1208,7 @@ void ct_winmode_suspend(void)
 	}
 	cancel_delayed_work_sync(&wm_jack_work);
 	cancel_delayed_work_sync(&wm_bass_work);
+	cancel_delayed_work_sync(&wm_xover_work);
 	cancel_delayed_work_sync(&wm_quiet_work);
 	if (wm.state == WM_RUNNING || wm.state == WM_LOADING) {
 		if (!READ_ONCE(wm_gone)) {
@@ -995,6 +1254,7 @@ void ct_winmode_free(struct kobject *kobj)
 	}
 	cancel_delayed_work_sync(&wm_jack_work);
 	cancel_delayed_work_sync(&wm_bass_work);
+	cancel_delayed_work_sync(&wm_xover_work);
 	cancel_delayed_work_sync(&wm_quiet_work);
 	/* never leave Windows' DSP program running behind us: rearm's PCI reset does not stop the cores (2026-10-29). Muted
 	 * first: halting it mid-stream crackles. The next driver's start (or the card reset) brings the outputs back. */
@@ -1156,6 +1416,8 @@ static int wm_parse_controls(const u8 *d, size_t size, size_t off, u32 count)
 		if (!c->n_states || c->n_states > (c->slider ? WM_MAX_STATES : WM_MAX_ENUM) || c->def >= c->n_states)
 			return -EINVAL;
 		c->want = c->at = c->def;
+		if (!strcmp(c->name, WM_XOVER))
+			c->at = 0;			/* the start's filters are pass-through, ~10 Hz */
 		c->st = kcalloc(c->n_states, sizeof(*c->st), GFP_KERNEL);
 		if (!c->st)
 			return -ENOMEM;
@@ -1199,6 +1461,8 @@ static int wm_parse_controls(const u8 *d, size_t size, size_t off, u32 count)
 		wm_n_ctls = i + 1;
 		if (!strcmp(c->name, WM_BASS_LEVEL))
 			wm_bass_check(c);
+		if (!strcmp(c->name, WM_SUB_NAME) && c->slider)
+			wm_sub = i;
 		if (!strcmp(c->name, WM_MASTER_NAME) && c->slider) {
 			wm_master = i;
 			c->want = min(ct_winplay_master(), c->n_states - 1);	/* applied by wm_apply_effects */
