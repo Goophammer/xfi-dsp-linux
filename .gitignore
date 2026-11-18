@@ -16,3 +16,4 @@ __pycache__/
 # editor leftovers
 *.kate-swp
 *~
+make_package.sh
