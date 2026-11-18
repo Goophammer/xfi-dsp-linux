@@ -78,6 +78,34 @@ move_stereo() {
 	echo "$1" > "${XDG_RUNTIME_DIR:-/tmp}/xfi_upmix.state"
 }
 
+# Settle (2026-11-18, user: Brave muted after 'off'): a moved stream can end up unlinked for a moment and then be put
+# back on its remembered output (PipeWire remembers the last output per application, and the upmix output still exists
+# after 'off'). For ~2 s, every stream that is unlinked or on the WRONG one of the two outputs is moved again.
+settle() {	# settle TARGET_SINK_NAME OTHER_SINK_NAME
+	for _ in 1 2 3 4 5 6 7 8 9 10; do
+		sleep 0.2
+		t=$(pactl list short sinks | awk -v n="$1" '$2 == n {print $1}')
+		o=$(pactl list short sinks | awk -v n="$2" '$2 == n {print $1}')
+		stereo_inputs | while read -r id oid; do
+			s=$(pactl list short sink-inputs | awk -v i="$id" '$1 == i {print $2}')
+			[ -n "$s" ] && [ "$s" != "$t" ] && { [ "$s" = "$o" ] || [ "$s" = 4294967295 ] || [ "$s" = - ]; } && move "$id" "$oid" "$1"
+		done
+	done
+}
+
+# in the background (the tray waits for this script); a new on/off stops the previous one first
+settle_bg() {
+	settle_stop
+	( settle "$1" "$2" ) >/dev/null 2>&1 &
+	echo $! > "$R/xfi_upmix.settle"
+	disown
+}
+settle_stop() {
+	P=$(cat "$R/xfi_upmix.settle" 2>/dev/null)
+	[ -n "$P" ] && { pkill -P "$P" 2>/dev/null; kill "$P" 2>/dev/null; }
+	rm -f "$R/xfi_upmix.settle"
+}
+
 # While the upmix is on: move every NEW stereo stream too (Elisa starts a stream per track, new players start plain)
 R=${XDG_RUNTIME_DIR:-/tmp}
 watch_start() {
@@ -127,10 +155,10 @@ apply_amount() {
 		pw-cli set-param "$id" Props "{ params = [ \"outL:Gain 1\" 1 \"outR:Gain 1\" 1 \"center:Gain 1\" 0.5 \"center:Gain 2\" 0.5 \"rlmix:Gain 1\" $g \"rlmix:Gain 2\" -$h \"rrmix:Gain 1\" $g \"rrmix:Gain 2\" -$h \"rlout:Gain 1\" 1 \"rlout:Gain 2\" 0 \"rrout:Gain 1\" 1 \"rrout:Gain 2\" 0 ] }" >/dev/null 2>&1
 		return 0
 	fi
-	# 7.1 (gamehp): ambience (L-R)/2 x a/50 (0..2), center (L+R)/2 x min(a/50, 1)
-	d=$(awk -v a="$a" 'BEGIN {printf "%.4f", a / 100}')
-	c=$(awk -v a="$a" 'BEGIN {printf "%.4f", (a > 50 ? 50 : a) / 100}')
-	pw-cli set-param "$id" Props "{ params = [ \"diff:Gain 1\" $d \"diff:Gain 2\" -$d \"center:Gain 1\" $c \"center:Gain 2\" $c ] }" >/dev/null 2>&1
+	# 7.1 (gamehp): ambience (L-R)/2 x a/50 (0..2), center (L+R)/2 x min(a/50, 1), everything x h = 1 / (1 + 0.6 a/50):
+	# headroom, CMSS-3D sums the 8 channels into 2 ears (it clipped, 2026-11-18)
+	set -- $(awk -v a="$a" 'BEGIN {h = 1 / (1 + 0.6 * a / 50); printf "%.4f %.4f %.4f", h, a / 100 * h, (a > 50 ? 50 : a) / 100 * h}')
+	pw-cli set-param "$id" Props "{ params = [ \"outL:Gain 1\" $1 \"outR:Gain 1\" $1 \"diff:Gain 1\" $2 \"diff:Gain 2\" -$2 \"center:Gain 1\" $3 \"center:Gain 2\" $3 ] }" >/dev/null 2>&1
 }
 
 state() {	# on = the upmix output exists and stereo goes to it
@@ -147,9 +175,9 @@ mode)	if [ -z "${2:-}" ]; then mode; exit 0; fi
 	case "$2" in xpand|surround) ;; *) echo "mode: xpand or surround"; exit 1 ;; esac
 	mkdir -p "$CONF_DIR"; echo "$2" > "$MODE_FILE"
 	AMOUNT_FILE=$CONF_DIR/upmix51_$2; [ "$CH" = 6 ] && apply_amount ;;
-on)	create; pactl set-default-sink "$XFI"; move_stereo "$UP"; watch_start; echo "upmix ON: stereo streams -> $([ "$CH" = 6 ] && echo 5.1 || echo 7.1) -> X-Fi (surround streams untouched)" ;;
-off)	watch_stop; move_stereo "$XFI"; echo "upmix OFF: stereo streams plain to the X-Fi" ;;
+on)	settle_stop; create; pactl set-default-sink "$XFI"; move_stereo "$UP"; watch_start; settle_bg "$UP" "$XFI"; echo "upmix ON: stereo streams -> $([ "$CH" = 6 ] && echo 5.1 || echo 7.1) -> X-Fi (surround streams untouched)" ;;
+off)	settle_stop; watch_stop; move_stereo "$XFI"; settle_bg "$XFI" "$UP"; echo "upmix OFF: stereo streams plain to the X-Fi" ;;
 toggle)	if [ "$(cat "${XDG_RUNTIME_DIR:-/tmp}/xfi_upmix.state" 2>/dev/null)" = "$UP" ]; then "$0" off; else "$0" on; fi ;;
-remove)	watch_stop; move_stereo "$XFI"; kill_up; rm -f "${XDG_RUNTIME_DIR:-/tmp}/xfi_upmix.state"; echo "upmix output removed" ;;
+remove)	settle_stop; watch_stop; move_stereo "$XFI"; kill_up; rm -f "${XDG_RUNTIME_DIR:-/tmp}/xfi_upmix.state"; echo "upmix output removed" ;;
 *)	sed -n '2,11p' "$0"; exit 1 ;;
 esac
