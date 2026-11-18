@@ -29,9 +29,10 @@ Three modes from Creative's Game and Entertainment mode (each is a firmware; you
 | | gamehp (Game, 7.1 + Headphones) | ent (Entertainment, 2/2.1) | ent51 (Entertainment, 5.1) |
 |---|---|---|---|
 | Crystalizer + level, SVM | yes | yes | yes |
-| Taskbar volume, mic monitor, microphone recording | yes | yes | yes, but the mic is silent on most starts (known bug); mic monitor on the center speaker |
+| Taskbar volume, mic monitor, microphone recording | yes | yes | yes (mic monitor on the center speaker) |
 | EQ | 10 presets, your own 10-band EQ, Bass, Treble, level | same | same |
-| CMSS-3D | **yes**, headphone surround | - (no effect with 2/2.1 speakers, on Windows too) | - (on Windows it's done by Creative's software) |
+| CMSS-3D | **yes**, headphone surround | - (no effect with 2/2.1 speakers, on Windows too) | Xpand (stereo to all 5.1 speakers) or Surround (front to back), in PipeWire as Creative's software does it on Windows |
+| Stereo Envelopment (stereo spread around you, in PipeWire, 0-100 %) | yes, to 7.1 for CMSS-3D | - | - (see CMSS-3D) |
 | EAX, Mic Environment | yes, heard through Mic Monitor; mic recordings stay dry | - | - |
 | Recording source What U Hear | yes | yes | yes |
 | Bass Boost | yes, level 3-12 dB, cutoff 10-200 Hz | same | - |

@@ -14,7 +14,8 @@ Three modes: `gamehp` (default: Game Mode, headphones, up to 7.1), `ent` (stereo
 |---|---|
 | **Effects** | |
 | CMSS-3D headphone surround for games, movies and music, up to 7.1 (mode `gamehp`) | ✅ |
-| Stereo Envelopment: stereo music spread around you, with amount slider (0 to 200%) (mode `gamehp`) | ✅ \* |
+| Stereo Envelopment: stereo music spread around you, with amount slider (0 to 100%) (mode `gamehp`) | ✅ \* |
+| CMSS-3D for 5.1 speakers, Xpand or Surround with one slider: stereo music spread to all speakers, or moved from front to back (mode `ent51`) | ✅ \* |
 | Crystalizer, with level slider | ✅ |
 | SVM (Smart Volume Management) | ✅ |
 | EQ: all 10 presets, with level slider | ✅ |
@@ -31,7 +32,7 @@ Three modes: `gamehp` (default: Game Mode, headphones, up to 7.1), `ent` (stereo
 | 5.1 speakers with subwoofer: Bass Redirection, crossover 10-200 Hz (mode `ent51`) | ✅ |
 | 4.1/7.1 speaker output | ❌ Not done |
 | **Recording** | |
-| Microphone recording and Mic Monitor | ✅, except `ent51` (known bug) |
+| Microphone recording and Mic Monitor | ✅ |
 | Mic Boost, up to +20 dB | ✅ |
 | EAX reverb on your voice through Mic Monitor (mode `gamehp`) | ✅ |
 | What U Hear (record everything you hear) | ✅ |

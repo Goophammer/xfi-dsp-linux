@@ -27,15 +27,16 @@ SOURCE_CTL = 'DSP Recording Source'
 LEVEL_CTL = 'DSP Mic Capture Volume'	# the mic's level, also PipeWire's input volume
 BOOST_CTL = 'DSP Mic Boost Capture Volume'	# the input chip's gain, in dB
 MASTER_CTL = 'DSP Master Playback Volume'	# the taskbar volume
-UPMIX_CTL = 'Stereo Upmix'			# not a card control: xfi_upmix.sh (stereo -> 7.1 in PipeWire, gamehp only); shown as
+UPMIX_CTL = 'Stereo Upmix'			# not a card control: xfi_upmix.sh (stereo -> 7.1 / 5.1 in PipeWire, gamehp / ent51); shown as
 UPMIX_AMOUNT = 'Stereo Upmix Amount'		# "Stereo Envelopment" (the names stay: they're the saved settings' keys)
+UPMIX_MODE = 'Stereo Upmix Mode'		# ent51 only: Xpand or Surround (xfi_upmix.sh mode); one slider for both
 SHOW_UPMIX = True		# False hides the switch (nothing restored then); xfi_upmix.sh works either way
 EQ_CTL = 'DSP EQ Preset'
 BANK_CTL = 'DSP EQ Custom Bank'			# hidden (iface CARD): the EQ bank computed here, for Bass/Treble
 TONE_ENTRIES = ('Bass -', 'Bass +', 'Treble -', 'Treble +', 'Bass + Treble +')	# old fixed entries (in firmwares of
 # 2026-11-09 only), replaced by the Bass/Treble sliders: a saved one is converted
 EQ_SETTINGS = 'EQ'				# settings.json: the EQ page (custom bands, Bass, Treble, level)
-NOT_SAVED = (LEVEL_CTL, MASTER_CTL)		# PipeWire remembers these
+NOT_SAVED = (LEVEL_CTL, MASTER_CTL, UPMIX_AMOUNT, UPMIX_MODE)	# PipeWire / xfi_upmix.sh (per mode) remember these
 PORTS = {'Mic': 'xfi-dsp-mic', 'What U Hear': 'xfi-dsp-wuh'}
 BR_CTL = 'DSP Bass Redirection Playback Switch'		# speaker modes (ent51): the sub's crossover, gain and level
 XOVER_CTL = 'DSP Crossover Frequency'	# 10..200 Hz, one state per Hz
@@ -397,14 +398,20 @@ def read_controls():
     ctls = {k: v for k, v in parse_contents(r.stdout).items() if k.startswith('DSP ')}
     # Master in PipeWire's percent, as the taskbar shows it: below the DSP's -50 dB PipeWire goes on in software
     (sink, ch), c = xfi_sink(channels=True), ctls.get(MASTER_CTL)
-    # Stereo Upmix: only when the X-Fi takes 8 channels in (gamehp), where the card's CMSS-3D places the extra channels
+    # Stereo Upmix: when the X-Fi takes 8 channels in (gamehp: the card's CMSS-3D places them around your head) or 6
+    # (ent51: straight to the 5.1 speakers)
     up = upmix_script() if SHOW_UPMIX else None
-    if up and sink and ch == 8:
+    if up and sink and ch in (6, 8):
         r = run(up, 'status')
         ctls[UPMIX_CTL] = {'type': 'BOOLEAN', 'value': bool(r and r.stdout.strip() == 'on'), 'min': 0, 'max': 0, 'items': []}
         r = run(up, 'amount')
         a = r.stdout.strip() if r and not r.returncode else ''
-        ctls[UPMIX_AMOUNT] = {'type': 'INTEGER', 'value': int(a) if a.isdigit() else 100, 'min': 0, 'max': 200, 'items': []}
+        ctls[UPMIX_AMOUNT] = {'type': 'INTEGER', 'value': int(a) if a.isdigit() else 50, 'min': 0, 'max': 100,
+                              'items': []}	# 0..100 % as Windows' CMSS-3D slider (50 = the old 100 %)
+        if ch == 6:
+            r = run(up, 'mode')
+            ctls[UPMIX_MODE] = {'type': 'ENUMERATED', 'value': int(bool(r and r.stdout.strip() == 'surround')),
+                                'min': 0, 'max': 1, 'items': ['Xpand', 'Surround']}
     if sink and c:
         r = run('pactl', 'get-sink-volume', sink)
         m = re.search(r'(\d+)%', r.stdout) if r else None
@@ -505,10 +512,11 @@ def apply_eq(e, force=False):
 
 
 def write_control(name, value):
-    if name in (UPMIX_CTL, UPMIX_AMOUNT):
+    if name in (UPMIX_CTL, UPMIX_AMOUNT, UPMIX_MODE):
         up = upmix_script()
         if up:
-            run(up, *(('on' if value else 'off',) if name == UPMIX_CTL else ('amount', str(value))))
+            run(up, *(('on' if value else 'off',) if name == UPMIX_CTL else
+                      ('mode', 'surround' if value else 'xpand') if name == UPMIX_MODE else ('amount', str(value))))
         return
     sink = xfi_sink() if name == MASTER_CTL else None
     if sink:
@@ -566,6 +574,8 @@ def restore(ctls, saved):
     """Your settings, in LAYOUT order, where the card differs."""
     order = [n for _, c, _, l in LAYOUT for n in (c, *subs(l))]
     for name in order:
+        if name in NOT_SAVED:
+            continue			# remembered elsewhere (an old settings file may still have them)
         if name in saved and name in ctls and ctls[name]['value'] != saved[name]:
             write_control(name, saved[name])
 
@@ -1196,9 +1206,24 @@ class Panel(QWidget):
             for n in pair:
                 g.addWidget(self.switch(n, next(l for _, m, l, _ in LAYOUT if m == n)), row, 1)
             row += 1
+            if name == UPMIX_CTL and UPMIX_MODE in self.ctls:
+                g.addWidget(QLabel('Mode'), row, 0)
+                box = QHBoxLayout()
+                box.setSpacing(18)
+                self.widgets[UPMIX_MODE] = []
+                for i, item in enumerate(self.ctls[UPMIX_MODE]['items']):
+                    b = QRadioButton(item)
+                    b.setToolTip('Xpand: the rears are added, fronts and center stay' if i == 0 else
+                                 'Surround: the slider moves the whole sound from the front to the back')
+                    b.clicked.connect(lambda _, v=i: self.change(UPMIX_MODE, v))
+                    box.addWidget(b)
+                    self.widgets[UPMIX_MODE].append(b)
+                box.addStretch()
+                g.addLayout(box, row, 1)
+                row += 1
             for lv in subs(level) + tuple(x for n in pair for _, m, _, l in LAYOUT if m == n for x in subs(l)):
                 if lv in self.ctls:
-                    self.labels[lv] = QLabel(SUB_LABEL.get(lv, 'Level'))
+                    self.labels[lv] = QLabel('Xpand' if lv == UPMIX_AMOUNT and self.speakers_upmix() else SUB_LABEL.get(lv, 'Level'))
                     g.addWidget(self.labels[lv], row, 0)
                     g.addWidget(self.slider(lv, self.ctls[lv]), row, 1)
                     row += 1
@@ -1225,7 +1250,21 @@ class Panel(QWidget):
         g.addWidget(self.slider(name, c), row, 1)
         return row + 1
 
+    def speakers_upmix(self):
+        """the upmix goes straight to speakers (ent51: no card CMSS-3D): shown as CMSS-3D with Xpand, as on Windows"""
+        return UPMIX_CTL in self.ctls and 'DSP CMSS-3D Playback Switch' not in self.ctls
+
     def switch(self, name, label):
+        if name == UPMIX_CTL and self.speakers_upmix():
+            w = QCheckBox('CMSS-3D')
+            w.setToolTip('Software, not the X-Fi: done on your PC in PipeWire, before the sound reaches the card (on Windows,\n'
+                         'Creative does this in software too). Spreads stereo music and videos to all 5.1 speakers, like\n'
+                         'Windows\' CMSS-3D: Xpand keeps fronts and center and fades the music into the rears,\n'
+                         'Surround moves the whole sound from the front to the back.\n'
+                         'Surround games and movies keep their own channels.')
+            w.toggled.connect(lambda val, n=name: self.change(n, val))
+            self.widgets[name] = w
+            return w
         w = QCheckBox(label)
         if name == UPMIX_CTL:
             w.setToolTip('Software, not the X-Fi: done on your PC in PipeWire, before the sound reaches the card (on Windows,\n'
@@ -1259,7 +1298,7 @@ class Panel(QWidget):
             c = self.ctls.get(name)
             if c is None or c['value'] is None:
                 continue
-            if name == SOURCE_CTL:
+            if isinstance(w, list):		# radio buttons (Recording Source, Xpand/Surround)
                 for i, b in enumerate(w):
                     b.setChecked(i == c['value'])
                 continue
@@ -1273,6 +1312,9 @@ class Panel(QWidget):
             w.blockSignals(False)
             if name in self.values:
                 self.values[name].setText(value_text(name, w.value(), c))
+        m = self.ctls.get(UPMIX_MODE)
+        if m and UPMIX_AMOUNT in self.labels:		# the slider is named after the mode
+            self.labels[UPMIX_AMOUNT].setText(m['items'][m['value']])
         mon = self.ctls.get(MONITOR_CTL)
         show = bool(mon and mon['value'])
         changed = False

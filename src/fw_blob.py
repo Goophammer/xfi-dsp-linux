@@ -75,7 +75,9 @@ def translate(rows):
     return lo, hi
 
 
-def ops_for(rows, min_gap_us=200):
+def ops_for(rows, min_gap_us=200, keep=()):
+    """keep: [t0, t1] windows (seq time) whose pauses the driver always replays (OP_DELAY arg bit 0), also with its fast
+    start - the Entertainment mic's converters only start if Windows' pauses around their setup are kept (2026-11-17)"""
     lo, hi = translate(rows)
     ops = []
     prev = rows[0][0] if rows else 0
@@ -84,7 +86,7 @@ def ops_for(rows, min_gap_us=200):
         gap = int(round((t - prev) * 1e6))
         prev = t
         if gap >= min_gap_us:
-            ops.append((OP_DELAY << 28, min(gap, 1000000)))
+            ops.append(((OP_DELAY << 28) | int(any(t0 <= t <= t1 for t0, t1 in keep)), min(gap, 1000000)))
         if blk == 'WAIT':
             ops.append(((OP_WAITZ << 28) | a, v))
         elif blk == 'WAITEQ':
@@ -137,7 +139,7 @@ def main():
     gap = int(sys.argv[sys.argv.index('--min-gap-us') + 1]) if '--min-gap-us' in sys.argv else 200
     mode = json.load(open(modef))
     rows = fw_seq.resolve(seq, root)
-    ops = ops_for(rows, gap)
+    ops = ops_for(rows, gap, mode.get('keep_pauses', []))
     # post_writes: fixed register values after the sequence, e.g. the master-volume parameters at 1.0 (0 dB) - the
     # trace carries the VM's Windows volume slider (Game3 capture: 30% -> parameter targets 0.2985)
     ops += [((OP_WRITE << 28) | int(a, 16), int(v, 16)) for a, v in mode.get('post_writes', [])]

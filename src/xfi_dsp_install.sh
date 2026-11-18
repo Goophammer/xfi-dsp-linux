@@ -9,7 +9,7 @@
 #                                  the next boot skips it (see the script; disable: sudo touch /etc/xfi-dsp-noautostart)
 #   - tray app                  -> /usr/local/bin/xfi-tray, started at login (~/.config/autostart/xfi-tray.desktop): the DSP's
 #                                  controls, and your settings restored after every boot; its Stereo Envelopment (gamehp) =
-#                                  /usr/local/bin/xfi-upmix + /usr/local/share/xfi-dsp/xfi_upmix.conf
+#                                  /usr/local/bin/xfi-upmix + /usr/local/share/xfi-dsp/xfi_upmix{,51}.conf
 #   - PipeWire output           -> card profile "X-Fi DSP" (ALSA device 6 through the DSP; the taskbar
 #                                  volume moves the DSP's master volume after the effects, as in Windows):
 #                                  ~/.local/share/xfi-dsp/xfi-dsp.conf (ACP profile set: X-Fi DSP + Analog Stereo)
@@ -60,10 +60,10 @@ FW=/lib/firmware/ctxfi/xfi20k1-dsp.bin
 CONF=/etc/modprobe.d/xfi-dsp.conf		# old autostart (winmode_autostart=1, before 2026-11-01) - removed
 SVC=/etc/systemd/system/xfi-dsp.service
 DEPMODC=/etc/depmod.d/xfi-dsp.conf
-DKMS_VER=2026.11.17.2
+DKMS_VER=2026.11.18.1
 AUTO=/usr/local/sbin/xfi-dsp-autostart
 TRAY=/usr/local/bin/xfi-tray
-UPMIX=/usr/local/bin/xfi-upmix		# tray's "Stereo Envelopment" (gamehp), filter in /usr/local/share/xfi-dsp
+UPMIX=/usr/local/bin/xfi-upmix		# tray's "Stereo Envelopment" (gamehp 7.1, ent51 5.1), filters in /usr/local/share/xfi-dsp
 PWC=$UHOME/.config/pipewire/pipewire.conf.d/xfi-dsp.conf	# old: a separate sink node (before 2026-10-30)
 PSET=$UHOME/.local/share/xfi-dsp/xfi-dsp.conf
 WPC=$UHOME/.config/wireplumber/wireplumber.conf.d/xfi-dsp.conf
@@ -205,6 +205,7 @@ install)
 	install -D -m 755 src/xfi_tray.py "$TRAY"
 	install -D -m 755 src/xfi_upmix.sh "$UPMIX"
 	install -D -m 644 src/xfi_upmix.conf /usr/local/share/xfi-dsp/xfi_upmix.conf
+	install -D -m 644 src/xfi_upmix51.conf /usr/local/share/xfi-dsp/xfi_upmix51.conf
 	# the tray's mode switch: the helper, what it runs (driver reload, PipeWire setup), and the polkit rule
 	install -D -m 755 src/xfi-dsp-mode.sh "$SWITCH"
 	for f in rearm.sh unstick.sh xfi_secureboot.sh; do install -D -m 755 "src/$f" "/usr/local/share/xfi-dsp/$f"; done

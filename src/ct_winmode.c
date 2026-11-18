@@ -98,7 +98,8 @@ MODULE_PARM_DESC(winmode_dac_mute, "Windows mode: mute the DAC while the DSP sta
  * modes). After that the DSP is synchronised by the handshake and mailbox waits. Tested on gamehp (2026-11-09): with
  * every later pause dropped the mailbox never answered (all 43 waits timed out, the load was unreliable), with only
  * the setup pauses kept all waits passed, the effects worked, and the DSP start went from 16 s to 3.8 s.
- * winmode_full_pauses=1 replays all of them, as before.
+ * winmode_full_pauses=1 replays all of them, as before. Pauses the firmware marks (OP_DELAY arg bit 0, a recipe's
+ * keep_pauses) are always replayed.
  */
 static bool winmode_full_pauses;
 module_param(winmode_full_pauses, bool, 0644);
@@ -885,7 +886,10 @@ static int wm_run(const __le32 *p, u32 n, u32 sa, u32 la, struct wm_stats *st, c
 			break;
 		case OP_DELAY:
 			w1 = min(w1, 1000000u);
-			if (setup_done && !winmode_full_pauses)
+			/* arg bit 0: a pause the firmware marks as needed (fw_blob keep_pauses): always replayed. The Entertainment
+			 * mic's input converters only start if Windows' pauses between their consumers' mixer ops and their reset
+			 * are kept; without them the mic was dead on most loads (2026-11-17) */
+			if (setup_done && !winmode_full_pauses && !(arg & 1))
 				break;
 			st->delay_us += w1;
 			if (w1 <= 20)
